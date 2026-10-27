@@ -1,0 +1,88 @@
+# ============================================================
+# dsh-plugin — Git 忽略规则
+# 个人自用的 DSH 插件合集：Node.js / TypeScript + 各插件独立打包
+# 说明：本文件只忽略“本机生成、可重新生成或不该公开”的内容，
+#       插件源码、lockfile、manifest（package.json / cordis.patch.yml）都照常提交。
+# ============================================================
+
+# ---------- 依赖 ----------
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+.yarn/cache/
+.yarn/install-state.gz
+.npm/
+
+# 注意：lockfile 一定要提交，用于复现依赖版本
+# pnpm-lock.yaml / package-lock.json / yarn.lock
+
+# ---------- 构建产物 ----------
+dist/
+build/
+out/
+*.tsbuildinfo
+.turbo/
+.vite/
+.parcel-cache/
+.cache/
+.eslintcache
+.stylelintcache
+
+# 本地打包（npm pack / pnpm pack）生成的压缩包
+*.tgz
+
+# 说明：仓库当前约定是入口文件（index.js / client.js）直接放在插件目录下并提交，
+#       所以这里不忽略根层级的 *.js。若某个插件改为“src -> 构建输出”模式，
+#       把它的输出目录（如 dist/ 之外的 js bundle）单独加进本节即可。
+
+# ---------- 测试与覆盖率 ----------
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# ---------- 日志与临时文件 ----------
+*.log
+logs/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# ---------- 编辑器 / IDE ----------
+.idea/
+.vscode/
+
+# ---------- 环境变量与本地密钥 ----------
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# ---------- 操作系统生成 ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ---------- DSH 本地运行态 ----------
+# 插件自身状态（$DSH_HOME/agent-config-manager/state.json 等）落在用户目录，
+# 一般不会进仓库；以下规则用于兜底，防止本地调试时误提交。
+state.json.bak
+.dsh/agent-config-manager/
+
+# ---------- 工作区级 DSH 配置 ----------
+# <workspace>/.dsh/ 是本机试验用的配置目录：
+#   .dsh/skills/             DSH 原生项目级技能（放进去即生效）
+#   .dsh/agent-config/       插件管理的技能 / 子代理 / 规则 + 启停状态
+# 内容因机器而异，默认整目录忽略。
+/.dsh/
+
+# 若以后想把示例配置随仓库分享，改成按子目录忽略，例如：
+# !/.dsh/
+# /.dsh/agent-config/
