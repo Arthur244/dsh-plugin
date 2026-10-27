@@ -1,0 +1,9 @@
+# dsh-a2d-workspace bundle patch：把本插件插入 desktop（web）profile。
+# 通过 `dsh plugin --profile desktop add ...` 安装后，插件管理器会把本包
+# 加入 dsh.profile.bundles 并合并此 patch。
+- insert:
+    - id: dsh-a2d-workspace
+      name: dsh-a2d-workspace
+      config:
+        # 扫描间隔（毫秒）。Zed 新建会话而桌面端进程未重启时，靠这个兜底拾取。
+        intervalMs: 30000
