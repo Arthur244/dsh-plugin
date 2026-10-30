@@ -1,0 +1,9 @@
+- id: auto-review
+  name: '@deepseek-ai/dsh-experimental-auto-review'
+  disabled: false
+- insert:
+    - id: auto-review-default
+      name: dsh-autorevivw-hold
+      config:
+        defaultAutoReview: false
+        skipAutoReviewWarning: false

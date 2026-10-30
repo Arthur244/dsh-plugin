@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto review default",
+    "description": "Adds an \"Auto review\" option to the default permission selector with a memorable risk confirmation."
+  }
+}
