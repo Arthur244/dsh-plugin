@@ -13,6 +13,8 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 
 </div>
 
+![dsh-plugin 插件总览：三个插件通过 cordis patch 接入 DSH](./asset/readme-hero.jpg)
+
 ## 这是什么
 
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（简称 **DSH**）是一个“一切皆插件”的 agent harness。这个仓库是我的个人插件收纳箱：平时自己写、自己用的小插件都放这里，换机器时好找，也方便改着玩。
@@ -33,9 +35,11 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | 插件 | 一句话说明 | 安装 profile | 状态 |
 | :--- | :--- | :---: | :---: |
 | [`dsh-a2d-workspace`](./dsh-a2d-workspace) | 把外部 ACP 客户端（Zed 等）产生的会话按 `cwd` 自动归入桌面端「工作区」，在会话侧栏按目录名分组 | desktop | ✅ 可用 |
-| `dsh-agent-config` | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
+| [`dsh-autorevivw-hold`](./dsh-autorevivw-hold) | 在「设置 → 通用 → 权限」的默认权限模式中加入「自动审查（实验）」，切换时弹风险确认并可勾选不再提示 | desktop | ✅ 可用 |
+| [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
+- **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 在新会话创建时应用 Auto，风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
 - **`dsh-agent-config`**（未实现）：目前只有 [设计草案](./dsh-agent-config/doc/design.md)，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。
 
 每个插件的安装命令、配置项和已知问题，以插件目录下的 README（或 `doc/`）为准。
@@ -45,14 +49,18 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | 文档 | 内容 |
 | :--- | :--- |
 | [`docs/installed-third-party-plugins.md`](./docs/installed-third-party-plugins.md) | 本机 `desktop` profile 已装三方插件的一次性盘点（版本、启用状态、孤儿包、可升级项）与复核命令 |
+| [`docs/ds-create.md`](./docs/ds-create.md) | DSH Agent 配置与「创造模式」开发指南（结论核对过 `ref/deepseek-harness` 源码） |
+| [`docs/gemini-create.md`](./docs/gemini-create.md) | 同主题指南：Cordis 微内核、Agent 预设体系与创造模式扩展 |
+| [`docs/cc-create.md`](./docs/cc-create.md) | 同主题指南：模式即预设、Agent 配置体系与创造模式运行逻辑 |
+| [`submodule.md`](./submodule.md) | `ref/` 下 submodule（添加、拉取、更新、删除）的通用操作与踩坑记录 |
 
-> 这份清单是**某台机器在某个时间点的快照**，不是通用文档；换机器或升级 DSH 后就会过期。
+> 三份 `*-create.md` 是同一主题的不同版本，内容有重叠；要查结论以 `docs/ds-create.md` 为准（它标注了源码核对）。`docs/installed-third-party-plugins.md` 则是**某台机器在某个时间点的快照**，换机器或升级 DSH 后就会过期。
 
 ## 安装
 
 需要先安装 DSH，并确保 `dsh` 命令可用（也可以使用 `npx @deepseek-ai/dsh`）。
 
-profile 是 DSH 的一套配置，常见名字是 `web` / `acp` / `desktop`；不确定自己的 profile 名时，看 `~/.dsh/profiles/` 下的目录。**不同插件要求的 profile 不同**：需要工作区（Workspace）服务的插件只能装 `desktop`（`web` profile），装到 `acp` 里不会生效。
+profile 是 DSH 的一套配置，常见名字是 `web` / `acp` / `desktop`；不确定自己的 profile 名时，看 `~/.dsh/profiles/` 下的目录。**不同插件要求的 profile 不同**：需要工作区（Workspace）服务的插件只能装 `desktop`（底层即 web profile），装到 `acp` 里不会生效。
 
 ### 从包名安装
 
@@ -173,23 +181,35 @@ export function apply(ctx) {
 
 ```text
 dsh-plugin/
-├── dsh-a2d-workspace/        # 一个插件一个目录（放在仓库根下）
+├── dsh-a2d-workspace/        # 插件：ACP 会话自动归入桌面端工作区
 │   ├── package.json
 │   ├── cordis.patch.yml
 │   ├── index.js              # Host 侧入口
-│   ├── client.js             # 可选：Web UI 入口
-│   ├── locale/               # 可选：插件标题 / 描述
-│   ├── doc/                  # 可选：开发与踩坑记录
+│   ├── doc/                  # 开发与踩坑记录
 │   └── README.md             # 安装、配置、已知问题
+├── dsh-autorevivw-hold/      # 插件：默认权限模式加入「自动审查」
+│   ├── package.json
+│   ├── cordis.patch.yml
+│   ├── index.js              # Host 侧入口（新会话应用 Auto）
+│   ├── schema.js             # 插件配置 schema
+│   ├── client.js             # Web UI 入口（重绘权限设置行）
+│   ├── locale/               # 插件标题 / 描述（en / zh）
+│   ├── icon.svg
+│   └── README.md
 ├── dsh-agent-config/         # 设计中，目前只有 doc/design.md
-│   └── doc/design.md
+│   ├── doc/design.md
+│   └── README.md             # 状态与设计稿入口
 ├── docs/                     # 仓库级文档（环境盘点等）
+├── asset/                    # 文档配图（README 图片统一放这里）
+├── ref/                      # submodule：只读参考仓库（deepseek-harness 等）
+├── test/                     # 本地试验目录（不入库）
+├── submodule.md              # submodule 操作说明
 ├── .dsh/                     # 本机工作区级配置（已 gitignore，不提交）
 ├── LICENSE
 └── README.md
 ```
 
-不同插件按需增减 `client.js`、`locale/`、`icon.svg` 等文件。
+不同插件按需增减 `client.js`、`schema.js`、`locale/`、`icon.svg` 等文件。`ref/` 下是 submodule，只作为参考，**不要**用 `dsh plugin add` 安装它们；相关操作见 [submodule.md](./submodule.md)。
 
 ## 兼容性
 
