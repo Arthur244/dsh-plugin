@@ -2,7 +2,9 @@ window.__ModuleLoader__.load({
   id: 'dsh-autorevivw-hold',
   factory: (require) => {
     const React = require('react')
-    const ReactDOM = require('react-dom')
+    // Shared shell modules: resolved from the client module table's seed
+    // entries, so these are the SAME instances the shipped settings UI uses.
+    const { Menu } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
 
     /** Host wire namespace of the official permission settings row. */
@@ -181,11 +183,12 @@ window.__ModuleLoader__.load({
         // Auto review is always offered: it is the option this plugin exists
         // to add. Never gate it on `catalog()` — that lists the presets the
         // CURRENT session may pick, so it omits Auto until a session is on Auto
-        // and cannot tell whether the integration is installed.
+        // and cannot tell whether the integration is installed. The menu shows
+        // a plain label like every shipped preset row, so the experimental
+        // marker rides on the label instead of a separate badge.
         options.push({
           id: AUTO_PRESET,
-          label: this.t('preset.auto'),
-          badge: this.t('auto.badge'),
+          label: this.t('preset.autoLabel'),
           detail: this.t('auto.description'),
         })
         // When Auto is the default, remember which preset to fall back to.
@@ -216,6 +219,17 @@ window.__ModuleLoader__.load({
 
     // ---- components ---------------------------------------------------------
 
+    /** Title-case a conventional kebab-case preset key; other labels pass through. */
+    function displayPresetName(name) {
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(name)) return name
+      return name.split('-').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+    }
+
+    /** The label a preset row shows: its product label, or a readable key. */
+    function optionLabel(option) {
+      return option.label ?? displayPresetName(option.id)
+    }
+
     function Row({ load, select, usePermission, t }) {
       const state = usePermission((snapshot) => snapshot)
       const [open, setOpen] = React.useState(false)
@@ -224,7 +238,6 @@ window.__ModuleLoader__.load({
       const [acknowledged, setAcknowledged] = React.useState(false)
       const [dontAskAgain, setDontAskAgain] = React.useState(false)
       const buttonRef = React.useRef(null)
-      const [menuBox, setMenuBox] = React.useState(null)
       React.useEffect(() => { load() }, [load])
       React.useEffect(() => {
         if (state.writable && state.status !== 'unavailable') return
@@ -233,38 +246,6 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (!confirming) setDontAskAgain(state.skipWarning === true)
       }, [confirming, state.skipWarning])
-      // Anchor the portal menu to the selector button; follow scroll and resize.
-      React.useEffect(() => {
-        if (!open) { setMenuBox(null); return }
-        const place = () => {
-          const rect = buttonRef.current?.getBoundingClientRect()
-          if (rect === undefined) return
-          setMenuBox({ top: rect.bottom + 4, right: window.innerWidth - rect.right, minWidth: Math.max(rect.width, 280) })
-        }
-        place()
-        window.addEventListener('scroll', place, true)
-        window.addEventListener('resize', place)
-        return () => {
-          window.removeEventListener('scroll', place, true)
-          window.removeEventListener('resize', place)
-        }
-      }, [open])
-      // Close on outside pointer-down and Escape, like the shared Menu.
-      React.useEffect(() => {
-        if (!open) return
-        const onPointerDown = (event) => {
-          const target = event.target
-          if (target instanceof Node && buttonRef.current?.contains(target) !== true
-            && !event.target.closest?.('.arh-menu')) setOpen(false)
-        }
-        const onKeyDown = (event) => { if (event.key === 'Escape') setOpen(false) }
-        document.addEventListener('mousedown', onPointerDown)
-        document.addEventListener('keydown', onKeyDown)
-        return () => {
-          document.removeEventListener('mousedown', onPointerDown)
-          document.removeEventListener('keydown', onKeyDown)
-        }
-      }, [open])
 
       if (state.status === 'unavailable') {
         // Keep the row visible instead of vanishing: a hidden row is
@@ -279,7 +260,7 @@ window.__ModuleLoader__.load({
       const selected = state.options.find((option) => option.id === state.currentValue)
       const busy = state.status === 'loading' || state.status === 'saving' || confirming
       const label = selected !== undefined
-        ? selected.label
+        ? optionLabel(selected)
         : busy ? t('loading') : t('unavailable')
 
       const choose = (id) => {
@@ -301,41 +282,26 @@ window.__ModuleLoader__.load({
             h('div', { className: 'arh-desc', role: state.error ? 'alert' : undefined },
               state.error ?? t('description')),
           ),
-          h('button', {
-            type: 'button',
-            ref: buttonRef,
-            className: 'arh-selector',
-            'aria-haspopup': 'menu',
-            'aria-expanded': open,
-            disabled: busy || !state.writable || state.options.length === 0,
-            onClick: () => setOpen((value) => !value),
-          }, label,
-            h('span', { className: 'arh-chevron', 'aria-hidden': true }, '▾'),
-          ),
-        ),
-        open && menuBox !== null && ReactDOM.createPortal(
-          h('div', {
-            className: 'arh-menu',
-            role: 'menu',
-            'aria-label': t('title'),
-            style: { top: `${menuBox.top}px`, right: `${menuBox.right}px`, minWidth: `${menuBox.minWidth}px` },
-          },
-            state.options.map((option) => h('button', {
-              key: option.id,
+          h(Menu, {
+            open,
+            onClose: () => { setOpen(false) },
+            align: 'end',
+            portal: true,
+            // This row's pill is wider than the shipped one's, so keep the card
+            // at least as wide as its trigger.
+            minWidthFromAnchor: true,
+            selectedId: state.currentValue,
+            items: state.options.map((option) => ({ id: option.id, label: optionLabel(option) })),
+            onSelect: (id) => { choose(id) },
+            anchor: h('button', {
+              ref: buttonRef,
               type: 'button',
-              role: 'menuitemradio',
-              'aria-checked': option.id === state.currentValue,
-              className: 'arh-option' + (option.id === state.currentValue ? ' arh-active' : ''),
-              onClick: () => choose(option.id),
-            },
-              h('span', { className: 'arh-optionMain' },
-                h('span', { className: 'arh-optionLabel' }, option.label,
-                  option.badge && h('span', { className: 'arh-badge' }, option.badge)),
-                option.detail && h('span', { className: 'arh-optionDetail' }, option.detail),
-              ),
-            )),
-          ),
-          document.body,
+              className: 'arh-selector',
+              'aria-haspopup': 'menu',
+              disabled: busy || !state.writable || state.options.length === 0,
+              onClick: () => { setOpen((value) => !value) },
+            }, label, h('span', { className: 'arh-chevron', 'aria-hidden': true }, '▾')),
+          }),
         ),
         confirming && h(RiskDialog, {
           t,
@@ -391,20 +357,17 @@ window.__ModuleLoader__.load({
     const CSS = `
 .arh-row{border-bottom:.5px solid var(--dsw-alias-border-l2);align-items:center;gap:8px;padding:16px 0;display:flex;position:relative}
 .arh-rowText{flex-direction:column;flex:1;gap:4px;min-width:0;padding-right:48px;display:flex}
+/* Narrow settings panel: the 48px gutter separates the label from its control
+   across a wide row and only squeezes the label here. */
+@media (max-width:767px){
+  html:not([data-windows-titlebar]):not([data-platform='darwin']) .arh-rowText{padding-right:16px}
+}
 .arh-title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:400;line-height:22px}
 .arh-desc{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:18px}
 .arh-selector{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;font:inherit;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font-size:14px;line-height:22px;display:inline-flex}
 .arh-selector:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .arh-selector:disabled{cursor:default}
 .arh-chevron{flex:none;font-size:10px;color:var(--dsw-alias-label-secondary)}
-.arh-menu{position:fixed;z-index:1000;max-width:360px;max-height:320px;overflow-y:auto;padding:4px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-elevated,var(--dsw-alias-bg-primary));border:1px solid var(--dsw-alias-border-l2);box-shadow:var(--dsw-shadow-lg,0 12px 40px rgba(0,0,0,.24));display:flex;flex-direction:column}
-.arh-option{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:8px 10px;border-radius:var(--dsw-radius-sm,6px);font:inherit;color:var(--dsw-alias-label-primary)}
-.arh-option:hover{background:var(--dsw-alias-interactive-bg-hover)}
-.arh-active{background:var(--dsw-alias-interactive-bg-selected,transparent)}
-.arh-optionMain{display:flex;flex-direction:column;gap:2px;min-width:0}
-.arh-optionLabel{font-size:14px;line-height:20px;display:flex;align-items:center;gap:6px}
-.arh-optionDetail{font-size:12px;line-height:16px;color:var(--dsw-alias-label-tertiary)}
-.arh-badge{font-size:10px;line-height:14px;padding:0 5px;border-radius:var(--dsw-radius-sm,6px);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);flex:none}
 .arh-overlay{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:24px;background:var(--dsw-alias-mask,rgba(0,0,0,.45))}
 .arh-dialog{width:min(480px,100%);padding:24px;border-radius:var(--dsw-radius-md,8px);background:var(--dsw-alias-bg-primary);color:var(--dsw-alias-label-primary);box-shadow:var(--dsw-shadow-lg,0 12px 40px rgba(0,0,0,.24));display:flex;flex-direction:column;gap:0}
 .arh-dialogTitle{margin:0 0 10px;font-size:18px;line-height:24px;font-weight:600}
@@ -437,8 +400,7 @@ window.__ModuleLoader__.load({
       'preset.readOnly': '仅可查看',
       'preset.workspaceWrite': '工作区内修改',
       'preset.fullAccess': '完全权限',
-      'preset.auto': '自动审查',
-      'auto.badge': 'EXP',
+      'preset.autoLabel': '自动审查（EXP）',
       'auto.description': '无沙箱运行；每次原生工具调用前由同一模型进行实验性审查。',
       'confirmTitle': '确认启用完全权限？',
       'confirmDescription': '启用完全权限后，新会话将减少确认步骤，并且可以直接执行更多操作，包括敏感操作、文件修改或外部命令。仅建议在你信任后续任务时使用。',
@@ -459,8 +421,7 @@ window.__ModuleLoader__.load({
       'preset.readOnly': 'Read Only',
       'preset.workspaceWrite': 'Workspace Write',
       'preset.fullAccess': 'Full access',
-      'preset.auto': 'Auto review',
-      'auto.badge': 'EXP',
+      'preset.autoLabel': 'Auto review (EXP)',
       'auto.description': 'Run without a sandbox after an experimental same-model review of every native tool call.',
       'confirmTitle': 'Enable Full access?',
       'confirmDescription': 'Full access lets new sessions reduce confirmation steps and perform more actions directly, including sensitive operations, file changes, or external commands. Only use it when you trust subsequent tasks.',
