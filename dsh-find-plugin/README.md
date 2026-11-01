@@ -27,25 +27,36 @@ directory disables the plugin.
 
 ### Manual trigger: `/find-plugin`
 
-The slash command does **not** search by itself — it hands the task to the
-agent explicitly, and the agent decides how to call the plugin:
+The slash command does **not** search by itself — it tells the agent that you
+want this plugin's capability, and the agent reads your wording plus the
+conversation context, chooses `query` / `limit` / `lang`, then calls
+`find_dsh_plugin`:
 
 ```text
 /find-plugin I want a WeChat notification when a task finishes — any plugin?
-/find-plugin                     ← bare: infer the need from context and confirm
+/find-plugin                     ← bare: infer the need from context and search
 ```
 
 | Form | Behaviour |
 | --- | --- |
-| `/find-plugin <your request>` | Your wording is carried **verbatim** inside one explanatory user message steered to the agent; the agent reads it with the conversation context, chooses `query` / `limit` / `lang` itself, then calls `find_dsh_plugin` |
-| bare `/find-plugin` | Also handed to the agent, but it is told to **infer from the conversation** which plugin need you mean, state that reading in one or two sentences, **ask you to confirm**, and only search after you agree — no tool call at that point |
-| options such as `--limit` | No longer parsed as command flags; they travel as part of the request text and the agent interprets them, so natural language like "just 3 results" works too |
+| `/find-plugin <your request>` | Your words come first, a one-line instruction in the same language follows ("use `find_dsh_plugin`, choose the parameters yourself"); the whole thing is steered to the agent as **one ordinary user message** |
+| bare `/find-plugin` | Steers a prompt that tells the agent to infer the plugin need from this conversation, choose the parameters itself, **search immediately**, and state the need it read — no confirmation round |
+| options such as `--limit` | Not parsed as command flags; they travel as part of the request text and the agent interprets them, so natural language like "just 3 results" works too |
 
 Delivery uses the host's established command→agent channel
 `agent.steer(message)` (the same path `/plan <message>` uses), so it arrives
 whether the agent is idle or mid-turn, and the text is logged as an ordinary
-user message. On a host without the `commands` service (UI-less runtime) the
-command registration is skipped and the tool keeps working.
+user message.
+
+The steered message declares `source: { kind: 'user' }`, matching `/plan`. That
+detail is load-bearing: the Web chat classifies a waking message whose source is
+anything else as injected context and renders it as the non-human "Turn trigger"
+card (`收到执行请求` / "Execution requested"). A `user` source renders the row as
+your own message, which is why the text puts your wording first and the tool
+instruction after it.
+
+On a host without the `commands` service (UI-less runtime) the command
+registration is skipped and the tool keeps working.
 
 ### Natural language
 ### Natural language
@@ -152,10 +163,15 @@ identical, every upstream test passing), then changed this:
   through `ctx.commands.register`. The command does **not** search: it wraps the
   user's wording in one explanatory user message and delivers it with the host
   channel `agent.steer(message)`, so the agent decides `query/limit/lang` from
-  the message plus the conversation; bare `/find-plugin` asks the agent to infer
-  the need from context and confirm first. `commands` is read as an optional
-  service. The search body that lived only inside the tool `execute` became one
-  shared `findPlugins()`. 9 new cases in `test/command.test.mjs`, 49 in total.
+  the message plus the conversation; bare `/find-plugin` also hands over to the
+  agent, which infers the need from context and searches straight away. The
+  steered message's `source` must be `{ kind: 'user' }` (as in the shipped
+  `/plan`): the Web chat renders a waking message with any other source as the
+  non-human "Execution requested" notice card. The instruction language follows
+  the user (a Chinese request gets a Chinese instruction; the bare form reads the
+  newest user message of the session). `commands` is read as an optional service.
+  The search body that lived only inside the tool `execute` became one shared
+  `findPlugins()`. 13 new cases in `test/command.test.mjs`, 53 in total.
 
 Known issues:
 

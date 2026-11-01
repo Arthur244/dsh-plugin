@@ -27,22 +27,30 @@ dsh plugin --profile desktop add /path/to/dsh-find-plugin
 
 ### 手动触发：`/find-plugin`
 
-斜杠命令**不会自己搜索**，它只是把你要做的事明确交给 agent，并由 agent 决定怎么调用插件：
+斜杠命令**不会自己搜索**，它只是把「我要用这个插件的能力」明确告诉 agent，由 agent
+读你的原话+对话上下文自己决定 `query` / `limit` / `lang`，再调用 `find_dsh_plugin`：
 
 ```text
 /find-plugin 任务完成时想收到微信通知，有插件吗
-/find-plugin                     ← 不带内容：让 agent 从上下文推断需求并先跟你确认
+/find-plugin                     ← 不带内容：让 agent 从上下文推断需求后直接查
 ```
 
 | 用法 | 行为 |
 | --- | --- |
-| `/find-plugin <你的需求>` | 你输入的原话**原样**夹在一条说明里，作为一条普通用户消息投递给 agent；agent 结合上下文自己决定 `query` / `limit` / `lang`，然后调用 `find_dsh_plugin` |
-| 只打 `/find-plugin` | 同样交给 agent，但要求它**先根据当前会话推断**你想找哪类插件、用一两句话说出理解，**征求你确认后**再搜索；此时不会调用工具 |
-| 传入选项如 `--limit` | 不再是命令参数，会被当作需求文本的一部分由 agent 自己理解 —— 这样“给我 3 条”这种自然语言也能生效 |
+| `/find-plugin <你的需求>` | 你的原话在前，后面附一句同语种的说明（“用 `find_dsh_plugin`，参数你自己定”），整体作为**一条普通用户消息**投递给 agent |
+| 只打 `/find-plugin` | 投递一条提示，要求 agent 从当前会话推断你需要哪类插件、自己决定参数、**直接搜索**并说明读出的需求；不再先征求确认 |
+| 选项如 `--limit` | 不解析成命令参数，作为需求文本的一部分由 agent 理解，所以“给我 3 条”这种自然语言同样生效 |
 
-投递走的是宿主既有的命令→agent 通道 `agent.steer(message)`（`/plan <message>` 用的同一条路），因此无论是空闲还是正在运行都能送达，并且这条消息会作为普通用户消息进入会话日志。没有 `commands` 服务的宿主（无人界面运行时）只是跳过命令注册，工具照常可用。
+投递走宿主的命令→agent 通道 `agent.steer(message)`（`/plan <message>` 用的同一条路），
+空闲或运行中都能送达，这条消息会作为普通用户消息进入会话日志。
 
-### 自然语言（无需记命令）
+消息的 `source` 声明为 `{ kind: 'user' }`（与 `/plan` 一致），这一条很关键：Web 端会把
+「唤醒本轮、且 source 不是 `user`」的消息归类为注入上下文，渲染成「收到执行请求」
+那张非人类通知卡。声明成普通用户消息后，它显示为你自己发出的消息，因此文本写成
+「你的原话在前、工具说明在后」的顺序。
+
+没有 `commands` 服务的宿主（无人界面运行时）只跳过命令注册，工具照常可用。
+
 ### 自然语言（无需记命令）
 
 安装后重启 `dsh web`，然后直接跟 agent 对话即可——需要找插件时它会自己调用
@@ -114,7 +122,7 @@ DSH 的插件 API 是预发布版本号，而 node-semver 规定：只有当 ran
 - `src/registry.ts`：请求截止时间优先走宿主的 `ctx.timer`（随插件释放），无该服务时回退 `setTimeout`；超时/取消会先真正中止请求再走 磁盘缓存 / 快照 兜底；修复「内存中的新数据被 304 覆盖了磁盘 ETag」的校验器问题；快照文件损坏时给出可读错误。
 - `data/registry-snapshot.json`：随包快照从 176 条刷新为当前完整列表（8107 条，2026-10-31）。
 - 测试：保留上游全部用例，新增宿主适配用例（严格 `ctx.get`、取消信号、可取消的重试间隔、宿主 timer、304 校验器、损坏快照等），共 40 例。
-- **新增手动入口 `/find-plugin`**（`src/command.ts`）：用 `ctx.commands.register` 注册斜杠命令；命令**自己不搜索**，而是把用户原话包装成一条说明性用户消息、经宿主的 `agent.steer(message)` 投递给 agent，由 agent 结合上下文决定 `query/limit/lang` 再调用工具；裸命令要求 agent 先从上下文推断需求、征求意见后再生效。`commands` 按可选依赖读取，缺失时只跳过命令注册。同时把原本内联在工具 `execute` 里的搜索逻辑抽成共用的 `findPlugins()`。新增 9 个用例（`test/command.test.mjs`），合计 49 例。
+- **新增手动入口 `/find-plugin`**（`src/command.ts`）：用 `ctx.commands.register` 注册斜杠命令；命令**自己不搜索**，而是把用户原话包装成一条说明性用户消息、经宿主的 `agent.steer(message)` 投递给 agent，由 agent 结合上下文决定 `query/limit/lang` 再调用工具；裸命令同样直接交给 agent，从上下文推断需求后立即搜索。投递消息的 `source` 必须是 `{ kind: 'user' }`（与官方 `/plan` 一致）——Web 端会把唤醒本轮、source 非 `user` 的消息渲染成「收到执行请求」通知卡。指令语种跟随用户（中文请求配中文说明；裸命令读取会话中最近一条用户消息判断语种）。`commands` 按可选依赖读取，缺失时只跳过命令注册。同时把原本内联在工具 `execute` 里的搜索逻辑抽成共用的 `findPlugins()`。新增 13 个用例（`test/command.test.mjs`），合计 53 例。
 
 ### 已知问题
 

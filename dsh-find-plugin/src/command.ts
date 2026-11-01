@@ -6,15 +6,23 @@
  * tells the agent to use this plugin's capability, and hands the wheel over —
  * the agent reads that message together with the conversation context, decides
  * what to search for, and calls `find_dsh_plugin` with its own parameters
- * (query / limit / lang). Bare `/find-plugin` never searches either: it asks
- * the agent to work out, from the context, which plugin need the user means,
- * and to confirm with the user before searching.
+ * (query / limit / lang). A bare `/find-plugin` behaves the same way: it tells
+ * the agent to take the need from the conversation and search immediately,
+ * without a confirmation round.
  *
  * Delivery uses the host's established command→agent channel,
  * `agent.steer(message)` (the same call `/plan <message>` uses; it queues the
  * message as the next step of the receiving agent and wakes it), so the
  * command works whether the agent is idle or mid-turn, and the text lands in
  * the session log as an ordinary user message.
+ *
+ * The steered message declares `source: { kind: 'user' }`, exactly like
+ * `/plan`. That source is load-bearing for presentation: the Web chat classifies
+ * a waking `user/message` whose source is any *other* kind as injected context
+ * and renders it as the non-human "Turn trigger" card
+ * (`message.trigger.request`, "收到执行请求"). A `user` source renders the row
+ * as the user's own message, so the text is written to read that way: the
+ * user's own words come first, and the tool instruction follows them.
  *
  * The `commands` service is an **optional** dependency: a host without it
  * (UI-less spines, older compositions) must still load this plugin for the
@@ -24,30 +32,46 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-/** What the command hands to the agent when the user typed a request. */
-const REQUEST_TEMPLATE = (request: string) =>
-  `[manual /find-plugin] The user explicitly asked to find DSH plugins. Their request, verbatim:\n\n` +
-  `${request}\n\n` +
-  'Use the `find_dsh_plugin` tool for this: read the request together with the conversation so far, ' +
-  "then choose the tool parameters yourself — a short English or Chinese keyword `query` that best " +
-  'matches what they need, a sensible `limit`, and `lang` matching the language they write in. ' +
-  'Do not ask for confirmation first unless the request is too vague to search. ' +
-  'Summarize what you found, including each ready-to-run install command, and remind them that ' +
-  'plugins are third-party code worth reviewing before installing.'
+/** Whether the text is mostly Chinese, so the steered instruction can match it. */
+const CJK = /[\u3400-\u9fff]/u
 
-/** What the command hands to the agent for a bare `/find-plugin`. */
-const CONTEXT_ONLY_TEMPLATE =
-  '[manual /find-plugin] The user invoked `/find-plugin` without naming what to look for. ' +
-  'Infer from the conversation so far which DSH plugin capability would help next — a need they ' +
-  'expressed, a limitation they hit, or a step they asked for that DSH cannot do today. ' +
-  'Summarize your reading in one or two sentences as a concrete plugin need, and ask the user to ' +
-  'confirm before searching. Once they confirm, call `find_dsh_plugin` with parameters you choose. ' +
-  'Do not call the tool yet, and do not ask any question beyond that confirmation.'
+/**
+ * Compose the visible message for a request.
+ * @param request - the user's request, already trimmed and non-empty.
+ * @returns the user's words followed by the tool instruction in the same language.
+ */
+function requestPrompt(request: string): string {
+  if (CJK.test(request)) {
+    return `${request}\n\n（用 \`find_dsh_plugin\` 帮我找插件：结合上面的对话自己决定 query、limit 和 lang，`
+      + '不必先问我确认；给出可直接运行的安装命令，并提醒我插件是第三方代码、装之前先看源码。）'
+  }
+  return `${request}\n\n(Use \`find_dsh_plugin\` for this: read it with the conversation so far, choose `
+    + '`query`, `limit` and `lang` yourself, and do not ask me to confirm first. Give the ready-to-run '
+    + 'install commands, and remind me that plugins are third-party code worth reviewing.)'
+}
+
+/** What the command hands to the agent for a bare `/find-plugin` in a Chinese conversation. */
+const CONTEXT_ONLY_ZH =
+  '[find-plugin] 现在用 `find_dsh_plugin` 工具：从上面的对话推断我接下来需要哪类插件能力（我说过的需求、'
+  + '遇到的限制，或我要求做到但 DSH 目前做不到的事），自己决定 query、limit 和 lang，用一句话说明你读出'
+  + '的需求，然后给出结果和可直接运行的安装命令。不必先问我确认。'
+
+/** What the command hands to the agent for a bare `/find-plugin` otherwise. */
+const CONTEXT_ONLY_EN =
+  '[find-plugin] Use the `find_dsh_plugin` tool now: infer from this conversation which plugin '
+  + 'capability would help next — a need I expressed, a limitation I hit, or a step I asked for '
+  + 'that DSH cannot do today. Choose `query`, `limit` and `lang` yourself, state in one sentence '
+  + 'which need you read out of the context, and report what you found with its install commands. '
+  + 'Do not ask me to confirm first.'
 
 /** Minimal shapes the command needs; the real objects come from `dsh-commands`. */
 interface CommandInvocation {
   /** The receiving agent; `steer` queues one user message for its next step. */
-  agent?: { steer?: (message: unknown) => void }
+  agent?: {
+    steer?: (message: unknown) => void
+    /** The live session, read only to match the language the user has been writing. */
+    session?: { deriveMessages?: () => readonly DrivenMessage[] }
+  }
   /** Everything after the command name, including separator whitespace. */
   rawInput?: string
   signal?: AbortSignal
@@ -64,28 +88,59 @@ interface CommandRegistry {
   register?: (definition: CommandDefinition) => () => void
 }
 
-/** The user message rendered for one invocation; exported for tests. */
-export function commandPrompt(rawInput: string): string {
-  const request = rawInput.trim()
-  return request.length > 0 ? REQUEST_TEMPLATE(request) : CONTEXT_ONLY_TEMPLATE
+/** Structural view of one logged message, enough to read its text. */
+interface DrivenMessage {
+  readonly role?: unknown
+  readonly content?: unknown
 }
 
 /**
- * Build the message object the host's `createUserMessage` would produce.
+ * Whether the conversation so far has been written mostly in Chinese.
+ * @param agent - the receiving agent, when the host supplied one.
+ * @returns true when the newest user message contains CJK text.
+ */
+function conversationIsChinese(agent: CommandInvocation['agent']): boolean {
+  let messages: readonly DrivenMessage[]
+  try {
+    messages = agent?.session?.deriveMessages?.() ?? []
+  } catch {
+    // A session that cannot be read yet (or at all) must not fail the command;
+    // the instruction then uses the default language.
+    return false
+  }
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message?.role !== 'user' || !Array.isArray(message.content)) continue
+    const text = message.content
+      .map(block => (typeof block === 'object' && block !== null && 'text' in block && typeof block.text === 'string' ? block.text : ''))
+      .join('')
+    if (text.trim().length > 0) return CJK.test(text)
+  }
+  return false
+}
+
+/** The user message rendered for one invocation; exported for tests. */
+export function commandPrompt(rawInput: string, chineseConversation = false): string {
+  const request = rawInput.trim()
+  if (request.length > 0) return requestPrompt(request)
+  return chineseConversation ? CONTEXT_ONLY_ZH : CONTEXT_ONLY_EN
+}
+
+/**
+ * Build the frozen user message the host's `createUserMessage` would produce.
  *
  * `@deepseek-ai/dsh-llm` is not a declared dependency of this plugin (a peer on
  * it would break installs against hosts whose copy lives elsewhere), so the
- * shape is built here: the frozen `{ id, role, content, source }` record that
- * the host's own session controller passes to `agent.steer`. The source says
- * the text came from this command, which is what keeps the model's reading of
- * it honest and the log greppable.
+ * record is built here: the frozen `{ id, role, content, source }` message the
+ * host's own session controller passes to `agent.steer`. `source.kind` is
+ * `'user'` for the presentation reason stated in this module's doc comment.
  */
-function userMessage(text: string, rawInput: string): unknown {
+function userMessage(text: string): unknown {
   return Object.freeze({
     id: `find-plugin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     role: 'user',
-    content: [{ type: 'text', text }],
-    source: { kind: 'command', name: 'find-plugin', rawInput },
+    content: Object.freeze([Object.freeze({ type: 'text', text })]),
+    source: Object.freeze({ kind: 'user' }),
   })
 }
 
@@ -111,17 +166,17 @@ export function registerCommand(ctx: Context): (() => void) | undefined {
     input: { hint: '<what you need, in your own words>' },
     handler: async ({ agent, rawInput }) => {
       const raw = rawInput ?? ''
-      const prompt = commandPrompt(raw)
+      const prompt = commandPrompt(raw, conversationIsChinese(agent))
       if (agent === undefined || typeof agent.steer !== 'function') {
         return { kind: 'error', text: 'find-plugin: no live agent is attached to this command run.' }
       }
       try {
-        agent.steer(userMessage(prompt, raw))
+        agent.steer(userMessage(prompt))
         return {
           kind: 'success',
           text: raw.trim().length > 0
-            ? 'Sent to the agent — it will choose the search parameters and call find_dsh_plugin.'
-            : 'Sent to the agent — it will infer the plugin need from this conversation and ask you to confirm.',
+            ? 'Sent — the agent will pick the search parameters.'
+            : 'Sent — the agent will take the need from this conversation and search.',
         }
       } catch (error) {
         return { kind: 'error', text: `find-plugin: could not message the agent: ${error instanceof Error ? error.message : String(error)}` }
