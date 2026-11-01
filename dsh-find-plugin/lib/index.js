@@ -36,6 +36,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { loadRegistry } from './registry.js';
 import { GitHubSearchRateLimited, searchGitHub } from './github.js';
 import { registerCommand } from './command.js';
+import { registerPromptSection } from './prompt.js';
 export const name = 'dsh-find-plugin';
 export const inject = ['tools'];
 /** DSH credential name; `credentialRef()` is a runtime identity, so no import. */
@@ -242,10 +243,12 @@ export function apply(ctx) {
         },
         timeoutMs: 25000,
     }));
-    // Manual entry point: `/find-plugin <request>` hands the request to the
-    // agent, which chooses the tool parameters itself. Optional — a host without
-    // the commands service simply has no slash command.
-    const unregister = registerCommand(ctx);
-    if (unregister !== undefined)
-        ctx.effect?.(() => unregister);
+    // Manual entry point. Both halves are optional: a host without the commands
+    // service has no slash command, and one without the prompt registry still has
+    // the tool. Bare `/find-plugin` shows itself as a user message and is explained
+    // by the prompt section; `/find-plugin <request>` never reaches either piece.
+    const unregisterCommand = registerCommand(ctx);
+    if (unregisterCommand !== undefined)
+        ctx.effect?.(() => unregisterCommand);
+    registerPromptSection(ctx);
 }

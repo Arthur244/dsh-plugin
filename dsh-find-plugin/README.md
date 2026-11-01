@@ -27,36 +27,40 @@ directory disables the plugin.
 
 ### Manual trigger: `/find-plugin`
 
-The slash command does **not** search by itself — it tells the agent that you
-want this plugin's capability, and the agent reads your wording plus the
-conversation context, chooses `query` / `limit` / `lang`, then calls
-`find_dsh_plugin`:
+The entry point **never rewrites what you typed**. The two shapes have different
+owners:
 
 ```text
 /find-plugin I want a WeChat notification when a task finishes — any plugin?
-/find-plugin                     ← bare: infer the need from context and search
+/find-plugin                     ← just the command: infer the need from context
 ```
 
-| Form | Behaviour |
+| Shape | What actually happens |
 | --- | --- |
-| `/find-plugin <your request>` | Your words come first, a one-line instruction in the same language follows ("use `find_dsh_plugin`, choose the parameters yourself"); the whole thing is steered to the agent as **one ordinary user message** |
-| bare `/find-plugin` | Steers a prompt that tells the agent to infer the plugin need from this conversation, choose the parameters itself, **search immediately**, and state the need it read — no confirmation round |
-| options such as `--limit` | Not parsed as command flags; they travel as part of the request text and the agent interprets them, so natural language like "just 3 results" works too |
+| `/find-plugin <your request>` | The plugin is **not involved at all**: the host sends the whole line as your ordinary message, the agent reads your words with the conversation, chooses `query` / `limit` / `lang` itself, and calls the tool |
+| bare `/find-plugin` | The command runs and steers one user message whose text is **exactly `/find-plugin`**; what to search for comes from a fixed system-prompt section |
+| the bare form's confirmation | The agent first states the need it read from the context and the `query` / `limit` / `lang` it would pass, and searches only after you agree |
 
-Delivery uses the host's established command→agent channel
-`agent.steer(message)` (the same path `/plan <message>` uses), so it arrives
-whether the agent is idle or mid-turn, and the text is logged as an ordinary
-user message.
+Both rules live in one static prompt section (`src/prompt.ts`, section
+`find-plugin:manual-entry`) rather than in per-message boilerplate, so a bubble
+only ever shows what you typed.
 
-The steered message declares `source: { kind: 'user' }`, matching `/plan`. That
-detail is load-bearing: the Web chat classifies a waking message whose source is
-anything else as injected context and renders it as the non-human "Turn trigger"
-card (`收到执行请求` / "Execution requested"). A `user` source renders the row as
-your own message, which is why the text puts your wording first and the tool
-instruction after it.
+The command declares **no `input`**, deliberately:
 
-On a host without the `commands` service (UI-less runtime) the command
-registration is skipped and the tool keeps working.
+- a declared `input.hint` is rendered as ghost text after the claimed token
+  (`InputBar.tsx` sets `--dsh-composer-hint`), which would put words you never
+  typed into your own draft;
+- a declared `input` also makes the host claim every argued line as structured
+  input, so the plugin would have to parse and re-assemble your text — the exact
+  thing this entry point must not do.
+
+Delivery uses the host's `agent.steer(message)` (the same path `/plan <message>`
+uses) with `source: { kind: 'user' }`: the Web chat renders a waking message from
+any other source as the non-human "Execution requested" notice card.
+
+A host without the `commands` service skips only the command; one without
+`systemPrompt` skips only the guidance (a child fiber waits for the service, so
+load order does not matter and the tool is unaffected).
 
 ### Natural language
 ### Natural language
@@ -159,19 +163,21 @@ identical, every upstream test passing), then changed this:
 - Tests: every upstream case kept, new host-adaptation cases added (strict
   `ctx.get`, cancellation, cancellable retry delay, host timer, 304
   validators, corrupt snapshot) — 40 in total.
-- **New manual entry point `/find-plugin`** (`src/command.ts`), registered
-  through `ctx.commands.register`. The command does **not** search: it wraps the
-  user's wording in one explanatory user message and delivers it with the host
-  channel `agent.steer(message)`, so the agent decides `query/limit/lang` from
-  the message plus the conversation; bare `/find-plugin` also hands over to the
-  agent, which infers the need from context and searches straight away. The
-  steered message's `source` must be `{ kind: 'user' }` (as in the shipped
-  `/plan`): the Web chat renders a waking message with any other source as the
-  non-human "Execution requested" notice card. The instruction language follows
-  the user (a Chinese request gets a Chinese instruction; the bare form reads the
-  newest user message of the session). `commands` is read as an optional service.
-  The search body that lived only inside the tool `execute` became one shared
-  `findPlugins()`. 13 new cases in `test/command.test.mjs`, 53 in total.
+- **New manual entry point `/find-plugin`**, in two halves:
+  - `src/command.ts` registers the slash command through `ctx.commands.register`
+    and declares **no `input`** — so an argued line is never claimed as
+    structured input (the host sends it verbatim as the user's own message) and
+    the composer shows no ghost hint; only the bare command reaches the handler,
+    which steers a user message whose text is exactly `/find-plugin`
+    (`source: { kind: 'user' }`, otherwise the Web chat renders the non-human
+    "Execution requested" card).
+  - `src/prompt.ts` registers the static section `find-plugin:manual-entry`
+    through `ctx.inject(['systemPrompt'], …)`, telling the model how to treat
+    each shape (confirm before searching for the bare form, search directly for
+    the argued one). The child fiber waits for the service, so load order does
+    not matter.
+  - The search body that lived only inside the tool `execute` became one shared
+    `findPlugins()`. 9 command cases in `test/command.test.mjs`, 49 in total.
 
 Known issues:
 

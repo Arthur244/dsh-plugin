@@ -58,7 +58,21 @@ const home = await mkdtemp(join(tmpdir(), 'findp-tool-'))
 process.env.DSH_HOME = home
 
 let registered = null
-const baseCtx = { tools: { register: (def) => { registered = def } }, get: () => undefined }
+// `inject` mirrors cordis: the callback runs once the named services exist. This
+// fake runs it immediately against the same context; the tool suite does not
+// exercise the prompt section, it only has to keep `apply` from throwing.
+const baseCtx = {
+  tools: { register: (def) => { registered = def } },
+  get: () => undefined,
+  inject: (_deps, callback) => { callback(baseCtx) },
+}
+
+/** A context whose `get` follows one rule, plus the `inject` shim `apply` needs. */
+function ctxWith(get, register = (def) => { capturedDef = def }) {
+  const ctx = { tools: { register }, get, inject: (_deps, callback) => { callback(ctx) } }
+  return ctx
+}
+let capturedDef = null
 const render = (out) => registered.output.render({}, out).map((block) => block.text).join('')
 
 test('contract: name, parameters, timeout and description', () => {
@@ -108,10 +122,10 @@ test('curated descriptions are truncated to 240 characters', async () => {
 
 test('the GITHUB_TOKEN credential is forwarded as a bearer token', async () => {
   let captured = null
-  apply({
-    tools: { register: (def) => { captured = def } },
-    get: (service) => (service === 'credentials' ? { resolve: async () => ({ value: 'ghp_from_dsh' }) } : undefined),
-  })
+  apply(ctxWith(
+    (service) => (service === 'credentials' ? { resolve: async () => ({ value: 'ghp_from_dsh' }) } : undefined),
+    (def) => { captured = def },
+  ))
   await captured.execute({ query: 'memory token path', limit: 2 }, undefined)
   const query = [...seenAuth.keys()].find((key) => key.includes('memory token path'))
   assert.equal(seenAuth.get(query), 'Bearer ghp_from_dsh')
@@ -126,10 +140,10 @@ test('a missing credentials service degrades to anonymous', async () => {
 
 test('a failing credentials service degrades to anonymous instead of erroring', async () => {
   let captured = null
-  apply({
-    tools: { register: (def) => { captured = def } },
-    get: () => ({ resolve: async () => { throw new Error('credentials service down') } }),
-  })
+  apply(ctxWith(
+    () => ({ resolve: async () => { throw new Error('credentials service down') } }),
+    (def) => { captured = def },
+  ))
   const out = await captured.execute({ query: 'memory creds throw', limit: 2 }, undefined)
   const query = [...seenAuth.keys()].find((key) => key.includes('memory creds throw'))
   assert.equal(seenAuth.get(query), null)
@@ -148,10 +162,10 @@ test('a credentials service that throws from ctx.get() itself degrades to anonym
   // Cordis resolves unknown services with `strict`, so `ctx.get('credentials')`
   // throws on a host that does not provide the service. The tool must still run.
   let captured = null
-  apply({
-    tools: { register: (def) => { captured = def } },
-    get: (service) => { throw new Error(`unknown service: ${service}`) },
-  })
+  apply(ctxWith(
+    (service) => { throw new Error(`unknown service: ${service}`) },
+    (def) => { captured = def },
+  ))
   const out = await captured.execute({ query: 'memory strict get ' + Date.now(), limit: 2 }, undefined)
   assert.ok(out.results.length > 0)
 })
