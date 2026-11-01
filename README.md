@@ -52,6 +52,8 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | [`docs/ds-create.md`](./docs/ds-create.md) | DSH Agent 配置与「创造模式」开发指南（结论核对过 `ref/deepseek-harness` 源码） |
 | [`docs/gemini-create.md`](./docs/gemini-create.md) | 同主题指南：Cordis 微内核、Agent 预设体系与创造模式扩展 |
 | [`docs/cc-create.md`](./docs/cc-create.md) | 同主题指南：模式即预设、Agent 配置体系与创造模式运行逻辑 |
+| [`docs/account-menu-personalization.md`](./docs/account-menu-personalization.md) | 侧栏左下角「用户信息」入口如何个性化：渲染链路、数据来源、三条可行路径（阴影 `settings.launcher` / 主题图标 / 改官方包）与插件实现要点（结论核对过 `ref/deepseek-harness` 源码） |
+| [`docs/readme-local-images-in-dsh.md`](./docs/readme-local-images-in-dsh.md) | 为什么四份 README 的本地配图在 DSH 里不显示（渲染器相对路径解析 + `/api/file` 路由约束）与规避/修复选项 |
 | [`submodule.md`](./submodule.md) | `ref/` 下 submodule（添加、拉取、更新、删除）的通用操作与踩坑记录 |
 
 > 三份 `*-create.md` 是同一主题的不同版本，内容有重叠；要查结论以 `docs/ds-create.md` 为准（它标注了源码核对）。`docs/installed-third-party-plugins.md` 则是**某台机器在某个时间点的快照**，换机器或升级 DSH 后就会过期。
