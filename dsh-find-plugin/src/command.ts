@@ -1,95 +1,103 @@
 /**
- * The manual entry point: `/find-plugin [--limit N] [--lang zh|en] <keywords>`.
+ * The manual entry point: `/find-plugin <natural-language request>`.
  *
- * The slash command lives in its own module because it belongs to the *manual*
- * surface, not to the tool contract:
+ * Manual trigger in the sense the user asked for: the command does **not**
+ * search. It turns what the user typed into one ordinary user message that
+ * tells the agent to use this plugin's capability, and hands the wheel over —
+ * the agent reads that message together with the conversation context, decides
+ * what to search for, and calls `find_dsh_plugin` with its own parameters
+ * (query / limit / lang). Bare `/find-plugin` never searches either: it asks
+ * the agent to work out, from the context, which plugin need the user means,
+ * and to confirm with the user before searching.
  *
- *  - `dsh-commands` runs a handler directly against the receiving agent and
- *    renders its text outside model history, so calling the command creates no
- *    model message and costs no tokens (see the package README, "Token effect");
- *  - the `commands` service is an **optional** dependency. A host without it
- *    (UI-less spines, older compositions) must still load this plugin for the
- *    tool, so `apply()` reads it with `ctx.get()` instead of declaring it in
- *    `inject`, and simply registers nothing when it is absent;
- *  - the command and the tool share one search implementation
- *    ({@link findPlugins}) so both callers cannot drift apart.
+ * Delivery uses the host's established command→agent channel,
+ * `agent.steer(message)` (the same call `/plan <message>` uses; it queues the
+ * message as the next step of the receiving agent and wakes it), so the
+ * command works whether the agent is idle or mid-turn, and the text lands in
+ * the session log as an ordinary user message.
+ *
+ * The `commands` service is an **optional** dependency: a host without it
+ * (UI-less spines, older compositions) must still load this plugin for the
+ * tool, so `apply()` reads it with `ctx.get()` and registers nothing when it is
+ * absent.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import type { FindDeps, FindResult } from './index.ts'
-import { renderText } from './index.ts'
 
-/** Default result count for the command; the tool has its own default of 8. */
-const COMMAND_DEFAULT_LIMIT = 5
-const COMMAND_MAX_LIMIT = 20
+/** What the command hands to the agent when the user typed a request. */
+const REQUEST_TEMPLATE = (request: string) =>
+  `[manual /find-plugin] The user explicitly asked to find DSH plugins. Their request, verbatim:\n\n` +
+  `${request}\n\n` +
+  'Use the `find_dsh_plugin` tool for this: read the request together with the conversation so far, ' +
+  "then choose the tool parameters yourself — a short English or Chinese keyword `query` that best " +
+  'matches what they need, a sensible `limit`, and `lang` matching the language they write in. ' +
+  'Do not ask for confirmation first unless the request is too vague to search. ' +
+  'Summarize what you found, including each ready-to-run install command, and remind them that ' +
+  'plugins are third-party code worth reviewing before installing.'
 
-/** Parsed `/find-plugin` input. */
-export interface CommandArgs {
-  /** Keywords; empty when the user typed only flags. */
-  query: string
-  limit: number
-  lang: string
+/** What the command hands to the agent for a bare `/find-plugin`. */
+const CONTEXT_ONLY_TEMPLATE =
+  '[manual /find-plugin] The user invoked `/find-plugin` without naming what to look for. ' +
+  'Infer from the conversation so far which DSH plugin capability would help next — a need they ' +
+  'expressed, a limitation they hit, or a step they asked for that DSH cannot do today. ' +
+  'Summarize your reading in one or two sentences as a concrete plugin need, and ask the user to ' +
+  'confirm before searching. Once they confirm, call `find_dsh_plugin` with parameters you choose. ' +
+  'Do not call the tool yet, and do not ask any question beyond that confirmation.'
+
+/** Minimal shapes the command needs; the real objects come from `dsh-commands`. */
+interface CommandInvocation {
+  /** The receiving agent; `steer` queues one user message for its next step. */
+  agent?: { steer?: (message: unknown) => void }
+  /** Everything after the command name, including separator whitespace. */
+  rawInput?: string
+  signal?: AbortSignal
+}
+
+interface CommandDefinition {
+  name: string
+  description: string
+  input?: { hint: string }
+  handler: (invocation: CommandInvocation) => Promise<{ kind: 'success'; text: string } | { kind: 'error'; text: string }>
+}
+
+interface CommandRegistry {
+  register?: (definition: CommandDefinition) => () => void
+}
+
+/** The user message rendered for one invocation; exported for tests. */
+export function commandPrompt(rawInput: string): string {
+  const request = rawInput.trim()
+  return request.length > 0 ? REQUEST_TEMPLATE(request) : CONTEXT_ONLY_TEMPLATE
 }
 
 /**
- * Parse the command's own grammar. The registry hands the handler everything
- * after the command name verbatim, so flags and keywords are split here:
- * `--limit N` / `-n N` and `--lang L` / `-l L` are stripped wherever they
- * appear; everything else (including CJK text) is the query.
- * @param raw - the raw input after `/find-plugin`.
- * @returns the parsed arguments; never throws.
+ * Build the message object the host's `createUserMessage` would produce.
+ *
+ * `@deepseek-ai/dsh-llm` is not a declared dependency of this plugin (a peer on
+ * it would break installs against hosts whose copy lives elsewhere), so the
+ * shape is built here: the frozen `{ id, role, content, source }` record that
+ * the host's own session controller passes to `agent.steer`. The source says
+ * the text came from this command, which is what keeps the model's reading of
+ * it honest and the log greppable.
  */
-export function parseCommandArgs(raw: string): CommandArgs {
-  const tokens = raw.trim().split(/\s+/u).filter(token => token.length > 0)
-  const keywords: string[] = []
-  let limit = COMMAND_DEFAULT_LIMIT
-  let lang = 'en'
-
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index]!
-    const flag = /^(--limit|-n)(?:=(.*))?$/u.exec(token)
-    const langFlag = /^(--lang|-l)(?:=(.*))?$/u.exec(token)
-    if (flag !== null) {
-      const value = flag[2] ?? tokens[index + 1]
-      if (flag[2] === undefined) index += 1
-      const asked = Number(value)
-      if (Number.isFinite(asked)) limit = Math.max(1, Math.min(Math.trunc(asked), COMMAND_MAX_LIMIT))
-      continue
-    }
-    if (langFlag !== null) {
-      const value = langFlag[2] ?? tokens[index + 1]
-      if (langFlag[2] === undefined) index += 1
-      if (typeof value === 'string' && value.length > 0) lang = value
-      continue
-    }
-    keywords.push(token)
-  }
-
-  return { query: keywords.join(' '), limit, lang }
-}
-
-/** Command text: the shared result rendering, prefixed with what was searched. */
-export function renderCommandText(args: CommandArgs, result: FindResult): string {
-  return `/find-plugin ${args.query}\n\n${renderText(result)}`
+function userMessage(text: string, rawInput: string): unknown {
+  return Object.freeze({
+    id: `find-plugin-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    role: 'user',
+    content: [{ type: 'text', text }],
+    source: { kind: 'command', name: 'find-plugin', rawInput },
+  })
 }
 
 /**
  * Register the slash command when this host has a command registry.
  * @param ctx - the plugin context.
- * @param find - the shared search implementation (same one the tool calls).
  * @returns the unregister disposer, or undefined when no command service exists.
  */
-export function registerCommand(ctx: Context, find: (deps: FindDeps) => Promise<FindResult>): (() => void) | undefined {
-  let commands: {
-    register?: (definition: {
-      name: string
-      description: string
-      input?: { hint: string }
-      handler: (invocation: { rawInput: string; signal: AbortSignal }) => Promise<{ kind: 'success'; text: string } | { kind: 'error'; text: string }>
-    }) => () => void
-  } | undefined
+export function registerCommand(ctx: Context): (() => void) | undefined {
+  let commands: CommandRegistry | undefined
   try {
-    commands = ctx.get?.('commands') as typeof commands
+    commands = ctx.get?.('commands') as CommandRegistry | undefined
   } catch {
     // Cordis resolves unknown services strictly: a host without commands is
     // not an error for this plugin, it just has no manual entry point.
@@ -99,22 +107,24 @@ export function registerCommand(ctx: Context, find: (deps: FindDeps) => Promise<
 
   return commands.register({
     name: 'find-plugin',
-    description: 'Search GitHub `dsh-plugin` topics for DSH plugins (live, ranked by stars)',
-    input: { hint: '[--limit N] [--lang zh|en] <keywords>' },
-    handler: async ({ rawInput, signal }) => {
-      const args = parseCommandArgs(rawInput)
-      if (args.query.length === 0) {
-        return {
-          kind: 'error',
-          text: 'Usage: /find-plugin [--limit N] [--lang zh|en] <keywords>\n' +
-            'e.g. /find-plugin --lang zh 跨会话记忆',
-        }
+    description: 'Ask the agent to find DSH plugins (it calls find_dsh_plugin with parameters it chooses)',
+    input: { hint: '<what you need, in your own words>' },
+    handler: async ({ agent, rawInput }) => {
+      const raw = rawInput ?? ''
+      const prompt = commandPrompt(raw)
+      if (agent === undefined || typeof agent.steer !== 'function') {
+        return { kind: 'error', text: 'find-plugin: no live agent is attached to this command run.' }
       }
       try {
-        const result = await find({ query: args.query, limit: args.limit, lang: args.lang, signal })
-        return { kind: 'success', text: renderCommandText(args, result) }
+        agent.steer(userMessage(prompt, raw))
+        return {
+          kind: 'success',
+          text: raw.trim().length > 0
+            ? 'Sent to the agent — it will choose the search parameters and call find_dsh_plugin.'
+            : 'Sent to the agent — it will infer the plugin need from this conversation and ask you to confirm.',
+        }
       } catch (error) {
-        return { kind: 'error', text: `find-plugin failed: ${error instanceof Error ? error.message : String(error)}` }
+        return { kind: 'error', text: `find-plugin: could not message the agent: ${error instanceof Error ? error.message : String(error)}` }
       }
     },
   })

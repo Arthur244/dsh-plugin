@@ -237,15 +237,15 @@ export function apply(ctx) {
         },
         execute: async (args, exec) => {
             // `exec.signal` is the call's cancellation signal; the transport merges
-            // it with its own timeout. The same implementation serves the command.
+            // it with its own timeout.
             return findPlugins(ctx, { query: args.query, limit: args.limit, lang: args.lang, signal: exec?.signal });
         },
         timeoutMs: 25000,
     }));
-    // Manual entry point: `/find-plugin <keywords>` runs the same search and
-    // renders outside model history. Optional — a host without the commands
-    // service simply has no slash command.
-    const unregister = registerCommand(ctx, deps => findPlugins(ctx, deps));
+    // Manual entry point: `/find-plugin <request>` hands the request to the
+    // agent, which chooses the tool parameters itself. Optional — a host without
+    // the commands service simply has no slash command.
+    const unregister = registerCommand(ctx);
     if (unregister !== undefined)
         ctx.effect?.(() => unregister);
 }

@@ -27,23 +27,22 @@ dsh plugin --profile desktop add /path/to/dsh-find-plugin
 
 ### 手动触发：`/find-plugin`
 
-在输入框直接打斜杠命令，**不经过模型、不产生模型消息、不消耗 token**，结果直接渲染在聊天里：
+斜杠命令**不会自己搜索**，它只是把你要做的事明确交给 agent，并由 agent 决定怎么调用插件：
 
 ```text
-/find-plugin 跨会话记忆
-/find-plugin --lang zh --limit 3 终端 TUI
-/find-plugin -n 5 -l en wechat notifications
+/find-plugin 任务完成时想收到微信通知，有插件吗
+/find-plugin                     ← 不带内容：让 agent 从上下文推断需求并先跟你确认
 ```
 
-| 用法 | 含义 |
+| 用法 | 行为 |
 | --- | --- |
-| `/find-plugin <关键词>` | 默认返回 5 条、描述用英文 |
-| `--limit N` / `-n N` | 返回条数，1–20 |
-| `--lang zh|en` / `-l zh|en` | 精选描述语言 |
-| 只打 `/find-plugin` | 显示用法提示，不会发起搜索 |
+| `/find-plugin <你的需求>` | 你输入的原话**原样**夹在一条说明里，作为一条普通用户消息投递给 agent；agent 结合上下文自己决定 `query` / `limit` / `lang`，然后调用 `find_dsh_plugin` |
+| 只打 `/find-plugin` | 同样交给 agent，但要求它**先根据当前会话推断**你想找哪类插件、用一两句话说出理解，**征求你确认后**再搜索；此时不会调用工具 |
+| 传入选项如 `--limit` | 不再是命令参数，会被当作需求文本的一部分由 agent 自己理解 —— 这样“给我 3 条”这种自然语言也能生效 |
 
-命令与 agent 工具 `find_dsh_plugin` **共用同一套搜索实现**，只在参数默认值和呈现上不同（工具默认 8 条、由模型决定摘要）。没有 `commands` 服务的宿主（无人界面运行时）只会自动跳过命令注册，工具照常可用。
+投递走的是宿主既有的命令→agent 通道 `agent.steer(message)`（`/plan <message>` 用的同一条路），因此无论是空闲还是正在运行都能送达，并且这条消息会作为普通用户消息进入会话日志。没有 `commands` 服务的宿主（无人界面运行时）只是跳过命令注册，工具照常可用。
 
+### 自然语言（无需记命令）
 ### 自然语言（无需记命令）
 
 安装后重启 `dsh web`，然后直接跟 agent 对话即可——需要找插件时它会自己调用
@@ -115,7 +114,7 @@ DSH 的插件 API 是预发布版本号，而 node-semver 规定：只有当 ran
 - `src/registry.ts`：请求截止时间优先走宿主的 `ctx.timer`（随插件释放），无该服务时回退 `setTimeout`；超时/取消会先真正中止请求再走 磁盘缓存 / 快照 兜底；修复「内存中的新数据被 304 覆盖了磁盘 ETag」的校验器问题；快照文件损坏时给出可读错误。
 - `data/registry-snapshot.json`：随包快照从 176 条刷新为当前完整列表（8107 条，2026-10-31）。
 - 测试：保留上游全部用例，新增宿主适配用例（严格 `ctx.get`、取消信号、可取消的重试间隔、宿主 timer、304 校验器、损坏快照等），共 40 例。
-- **新增手动入口 `/find-plugin`**（`src/command.ts`）：用当前宿主的 `ctx.commands.register` 注册斜杠命令，把原本只在工具 `execute` 里的搜索逻辑抽成共用的 `findPlugins()`，工具与命令都调用它；`commands` 服务按可选依赖读取（`ctx.get`），缺失时只跳过命令注册。命令不产生模型消息、不耗 token；新增 11 个用例（`test/command.test.mjs`），合计 51 例。
+- **新增手动入口 `/find-plugin`**（`src/command.ts`）：用 `ctx.commands.register` 注册斜杠命令；命令**自己不搜索**，而是把用户原话包装成一条说明性用户消息、经宿主的 `agent.steer(message)` 投递给 agent，由 agent 结合上下文决定 `query/limit/lang` 再调用工具；裸命令要求 agent 先从上下文推断需求、征求意见后再生效。`commands` 按可选依赖读取，缺失时只跳过命令注册。同时把原本内联在工具 `execute` 里的搜索逻辑抽成共用的 `findPlugins()`。新增 9 个用例（`test/command.test.mjs`），合计 49 例。
 
 ### 已知问题
 
