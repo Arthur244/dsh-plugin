@@ -4,3 +4,6 @@
 [submodule "deepseek-harness"]
 	path = ref/deepseek-harness
 	url = https://github.com/deepseek-ai/deepseek-harness
+[submodule "dsh-find-plugin"]
+	path = ref/dsh-find-plugin
+	url = https://github.com/awesome-dsh-plugin/dsh-find-plugin.git
