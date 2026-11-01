@@ -25,6 +25,27 @@ dsh plugin --profile desktop add /path/to/dsh-find-plugin
 
 ## 使用
 
+### 手动触发：`/find-plugin`
+
+在输入框直接打斜杠命令，**不经过模型、不产生模型消息、不消耗 token**，结果直接渲染在聊天里：
+
+```text
+/find-plugin 跨会话记忆
+/find-plugin --lang zh --limit 3 终端 TUI
+/find-plugin -n 5 -l en wechat notifications
+```
+
+| 用法 | 含义 |
+| --- | --- |
+| `/find-plugin <关键词>` | 默认返回 5 条、描述用英文 |
+| `--limit N` / `-n N` | 返回条数，1–20 |
+| `--lang zh|en` / `-l zh|en` | 精选描述语言 |
+| 只打 `/find-plugin` | 显示用法提示，不会发起搜索 |
+
+命令与 agent 工具 `find_dsh_plugin` **共用同一套搜索实现**，只在参数默认值和呈现上不同（工具默认 8 条、由模型决定摘要）。没有 `commands` 服务的宿主（无人界面运行时）只会自动跳过命令注册，工具照常可用。
+
+### 自然语言（无需记命令）
+
 安装后重启 `dsh web`，然后直接跟 agent 对话即可——需要找插件时它会自己调用
 `find_dsh_plugin`：
 
@@ -94,6 +115,7 @@ DSH 的插件 API 是预发布版本号，而 node-semver 规定：只有当 ran
 - `src/registry.ts`：请求截止时间优先走宿主的 `ctx.timer`（随插件释放），无该服务时回退 `setTimeout`；超时/取消会先真正中止请求再走 磁盘缓存 / 快照 兜底；修复「内存中的新数据被 304 覆盖了磁盘 ETag」的校验器问题；快照文件损坏时给出可读错误。
 - `data/registry-snapshot.json`：随包快照从 176 条刷新为当前完整列表（8107 条，2026-10-31）。
 - 测试：保留上游全部用例，新增宿主适配用例（严格 `ctx.get`、取消信号、可取消的重试间隔、宿主 timer、304 校验器、损坏快照等），共 40 例。
+- **新增手动入口 `/find-plugin`**（`src/command.ts`）：用当前宿主的 `ctx.commands.register` 注册斜杠命令，把原本只在工具 `execute` 里的搜索逻辑抽成共用的 `findPlugins()`，工具与命令都调用它；`commands` 服务按可选依赖读取（`ctx.get`），缺失时只跳过命令注册。命令不产生模型消息、不耗 token；新增 11 个用例（`test/command.test.mjs`），合计 51 例。
 
 ### 已知问题
 

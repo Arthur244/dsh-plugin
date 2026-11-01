@@ -35,4 +35,35 @@
 import type { Context } from '@deepseek-ai/cordis';
 export declare const name = "dsh-find-plugin";
 export declare const inject: string[];
+export type FindItem = {
+    name: string;
+    url: string;
+    description: string;
+    stars: number;
+    install: string;
+};
+export type FindResult = {
+    results: FindItem[];
+    note: string;
+};
+export declare function renderText(result: FindResult): string;
+/** One search request, shared by the tool and the `/find-plugin` command. */
+export interface FindDeps {
+    query: string;
+    limit: number;
+    lang: string;
+    /** Caller cancellation: the tool call's signal or the command's signal. */
+    signal?: AbortSignal;
+}
+/** Clamp a requested count into the supported 1..20 window; anything unusable uses the default. */
+export declare function clampLimit(value: unknown, fallback?: number): number;
+/**
+ * The one search implementation behind both callers.
+ *
+ * GitHub first (live, star-ranked, curated descriptions when a result is also
+ * on the list); when GitHub is rate limited or unreachable it degrades to
+ * keyword matches over the curated list and says so in the note. It throws only
+ * when nothing is left to answer from.
+ */
+export declare function findPlugins(ctx: Context, deps: FindDeps): Promise<FindResult>;
 export declare function apply(ctx: Context): void;

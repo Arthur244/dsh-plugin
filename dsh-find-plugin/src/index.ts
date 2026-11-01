@@ -37,6 +37,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { loadRegistry, type LoadRegistryOptions, type Registry, type RegistryPlugin } from './registry.ts'
 import { GitHubSearchRateLimited, searchGitHub } from './github.ts'
+import { registerCommand } from './command.ts'
 
 export const name = 'dsh-find-plugin'
 export const inject = ['tools']
@@ -49,7 +50,7 @@ const DESCRIPTION_MAX_CHARS = 240
 const LIVE_NOTE =
   'Live GitHub `dsh-plugin` topic search, ranked by stars. All plugins are third-party code — review the source and pin a commit when installing. Browse the curated list at https://awesome-dsh-plugin.com'
 
-type FindItem = {
+export type FindItem = {
   name: string
   url: string
   description: string
@@ -57,7 +58,7 @@ type FindItem = {
   install: string
 }
 
-type FindResult = {
+export type FindResult = {
   results: FindItem[]
   note: string
 }
@@ -153,7 +154,7 @@ function searchCurated(registry: Registry, query: string, limit: number, lang: s
   }))
 }
 
-function renderText(result: FindResult): string {
+export function renderText(result: FindResult): string {
   if (result.results.length === 0) {
     return 'No matching plugins found. Try broader keywords, or browse https://awesome-dsh-plugin.com' +
       (result.note ? `\n\n${result.note}` : '')
@@ -162,6 +163,89 @@ function renderText(result: FindResult): string {
     `${i + 1}. ${m.name} ★${m.stars} — ${m.description}\n   ${m.url}\n   install: ${m.install}`,
   )
   return lines.join('\n\n') + (result.note ? `\n\n${result.note}` : '')
+}
+
+/** One search request, shared by the tool and the `/find-plugin` command. */
+export interface FindDeps {
+  query: string
+  limit: number
+  lang: string
+  /** Caller cancellation: the tool call's signal or the command's signal. */
+  signal?: AbortSignal
+}
+
+/** Clamp a requested count into the supported 1..20 window; anything unusable uses the default. */
+export function clampLimit(value: unknown, fallback = 8): number {
+  const asked = Number(value)
+  return Number.isFinite(asked) ? Math.max(1, Math.min(Math.trunc(asked), 20)) : fallback
+}
+
+/**
+ * The one search implementation behind both callers.
+ *
+ * GitHub first (live, star-ranked, curated descriptions when a result is also
+ * on the list); when GitHub is rate limited or unreachable it degrades to
+ * keyword matches over the curated list and says so in the note. It throws only
+ * when nothing is left to answer from.
+ */
+export async function findPlugins(ctx: Context, deps: FindDeps): Promise<FindResult> {
+  const limit = clampLimit(deps.limit)
+  const lang = typeof deps.lang === 'string' && deps.lang.length > 0 ? deps.lang : 'en'
+  const signal = deps.signal
+  const token = await resolveGitHubToken(ctx)
+  const registryOptions: LoadRegistryOptions = { signal, timer: hostTimer(ctx) }
+
+  let githubError: unknown = null
+  let found: Awaited<ReturnType<typeof searchGitHub>> = []
+  try {
+    found = await searchGitHub(deps.query, limit, { token, signal })
+  } catch (error) {
+    githubError = error
+  }
+
+  // Happy path — unchanged: GitHub results, enriched with curated descriptions
+  // when the same URL is on the curated list.
+  if (githubError === null) {
+    const curated = new Map<string, Record<string, string>>()
+    try {
+      const { registry } = await loadRegistry(registryOptions)
+      for (const plugin of registry.plugins) curated.set(plugin.url.toLowerCase(), plugin.description)
+    } catch { /* registry unavailable — GitHub descriptions only */ }
+
+    const results: FindItem[] = found
+      .sort((a, b) => b.stars - a.stars)
+      .map(candidate => {
+        const desc = curated.get(candidate.url.toLowerCase())
+        return {
+          name: candidate.name,
+          url: candidate.url,
+          description: desc ? (desc[lang] ?? desc.en ?? candidate.description) : candidate.description,
+          stars: candidate.stars,
+          install: candidate.install,
+        }
+      })
+    return { results, note: results.length > 0 ? LIVE_NOTE : '' }
+  }
+
+  // Degraded path: GitHub unavailable → curated keyword matches.
+  let registry: Registry
+  let source: string
+  try {
+    ({ registry, source } = await loadRegistry(registryOptions))
+  } catch {
+    // Nothing left to fall back to — surface the original failure.
+    throw githubError
+  }
+  const results = searchCurated(registry, deps.query, limit, lang)
+  const message = githubError instanceof Error ? githubError.message : String(githubError)
+  const reason = githubError instanceof GitHubSearchRateLimited
+    ? `GitHub search is rate limited: ${message}`
+    : `GitHub search is unavailable: ${message}`
+  const note = `${reason}
+Falling back to keyword matches from the curated awesome-dsh-plugin list ` +
+    `(source=${source}, ${registry.plugins?.length ?? 0} entries) — not a live star-ranked GitHub result. ` +
+    'Configure the DSH `GITHUB_TOKEN` credential to restore live search (30 req/min authenticated).'
+  return { results, note }
 }
 
 export function apply(ctx: Context): void {
@@ -193,67 +277,16 @@ export function apply(ctx: Context): void {
       render: (_args, value) => [{ type: 'text', text: renderText(value as unknown as FindResult) }],
     },
     execute: async (args, exec) => {
-      // Arguments are model-authored JSON: NaN/strings must not leak into
-      // `per_page` or `slice`, so the clamp is numeric-safe.
-      const asked = Number(args.limit)
-      const limit = Number.isFinite(asked) ? Math.max(1, Math.min(Math.trunc(asked), 20)) : 8
-      const lang = typeof args.lang === 'string' && args.lang.length > 0 ? args.lang : 'en'
-      const token = await resolveGitHubToken(ctx)
-      const registryOptions: LoadRegistryOptions = { signal: exec?.signal, timer: hostTimer(ctx) }
-
-      let githubError: unknown = null
-      let found: Awaited<ReturnType<typeof searchGitHub>> = []
-      try {
-        // `signal` on the run context is the call's cancellation signal in the
-        // current host; the transport merges it with its own timeout.
-        found = await searchGitHub(args.query, limit, { token, signal: exec?.signal })
-      } catch (error) {
-        githubError = error
-      }
-
-      // Happy path — unchanged: GitHub results, enriched with curated
-      // descriptions when the same URL is on the curated list.
-      if (githubError === null) {
-        const curated = new Map<string, Record<string, string>>()
-        try {
-          const { registry } = await loadRegistry(registryOptions)
-          for (const p of registry.plugins) curated.set(p.url.toLowerCase(), p.description)
-        } catch { /* registry unavailable — GitHub descriptions only */ }
-
-        const results: FindItem[] = found
-          .sort((a, b) => b.stars - a.stars)
-          .map(c => {
-            const desc = curated.get(c.url.toLowerCase())
-            return {
-              name: c.name,
-              url: c.url,
-              description: desc ? (desc[lang] ?? desc.en ?? c.description) : c.description,
-              stars: c.stars,
-              install: c.install,
-            }
-          })
-        return { results, note: results.length > 0 ? LIVE_NOTE : '' } satisfies FindResult
-      }
-
-      // Degraded path: GitHub unavailable → curated keyword matches.
-      let registry: Registry
-      let source: string
-      try {
-        ({ registry, source } = await loadRegistry(registryOptions))
-      } catch {
-        // Nothing left to fall back to — surface the original failure.
-        throw githubError
-      }
-      const results = searchCurated(registry, args.query, limit, lang)
-      const message = githubError instanceof Error ? githubError.message : String(githubError)
-      const reason = githubError instanceof GitHubSearchRateLimited
-        ? `GitHub search is rate limited: ${message}`
-        : `GitHub search is unavailable: ${message}`
-      const note = `${reason}\nFalling back to keyword matches from the curated awesome-dsh-plugin list ` +
-        `(source=${source}, ${registry.plugins?.length ?? 0} entries) — not a live star-ranked GitHub result. ` +
-        'Configure the DSH `GITHUB_TOKEN` credential to restore live search (30 req/min authenticated).'
-      return { results, note } satisfies FindResult
+      // `exec.signal` is the call's cancellation signal; the transport merges
+      // it with its own timeout. The same implementation serves the command.
+      return findPlugins(ctx, { query: args.query, limit: args.limit as number, lang: args.lang as string, signal: exec?.signal })
     },
     timeoutMs: 25000,
   }))
+
+  // Manual entry point: `/find-plugin <keywords>` runs the same search and
+  // renders outside model history. Optional — a host without the commands
+  // service simply has no slash command.
+  const unregister = registerCommand(ctx, deps => findPlugins(ctx, deps))
+  if (unregister !== undefined) ctx.effect?.(() => unregister)
 }

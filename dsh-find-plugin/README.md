@@ -25,6 +25,32 @@ directory disables the plugin.
 
 ## Usage
 
+### Manual trigger: `/find-plugin`
+
+Type the slash command in the composer. It runs **without the model**: no model
+message is created, no tokens are spent, and the rendered result is shown
+directly in the chat.
+
+```text
+/find-plugin cross-session memory
+/find-plugin --lang zh --limit 3 terminal TUI
+/find-plugin -n 5 -l en wechat notifications
+```
+
+| Form | Meaning |
+| --- | --- |
+| `/find-plugin <keywords>` | 5 results, English descriptions by default |
+| `--limit N` / `-n N` | result count, 1–20 |
+| `--lang zh|en` / `-l zh|en` | curated description language |
+| bare `/find-plugin` | prints usage; performs no search |
+
+The command and the `find_dsh_plugin` tool share one search implementation;
+they differ only in defaults (the tool returns 8) and in who presents the
+result. On a host without the `commands` service (UI-less runtime) the command
+registration is skipped and the tool keeps working.
+
+### Natural language
+
 Restart `dsh web` after installing, then just talk to the agent — it calls
 `find_dsh_plugin` on its own whenever plugin discovery helps:
 
@@ -123,6 +149,12 @@ identical, every upstream test passing), then changed this:
 - Tests: every upstream case kept, new host-adaptation cases added (strict
   `ctx.get`, cancellation, cancellable retry delay, host timer, 304
   validators, corrupt snapshot) — 40 in total.
+- **New manual entry point `/find-plugin`** (`src/command.ts`), registered
+  through the host `ctx.commands.register`: the search body that lived only
+  inside the tool `execute` became one shared `findPlugins()` used by both the
+  tool and the command; `commands` is read as an optional service, so a host
+  without it just skips the registration. The command creates no model message
+  and spends no tokens. 11 new cases in `test/command.test.mjs`, 51 in total.
 
 Known issues:
 
