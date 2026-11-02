@@ -13,7 +13,7 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 
 </div>
 
-![dsh-plugin 插件总览：三个插件通过 cordis patch 接入 DSH](./asset/readme-hero.jpg)
+![dsh-plugin 插件总览：各插件通过 cordis patch 接入 DSH](./asset/readme-hero.jpg)
 
 ## 这是什么
 
@@ -36,27 +36,21 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | :--- | :--- | :---: | :---: |
 | [`dsh-a2d-workspace`](./dsh-a2d-workspace) | 把外部 ACP 客户端（Zed 等）产生的会话按 `cwd` 自动归入桌面端「工作区」，在会话侧栏按目录名分组 | desktop | ✅ 可用 |
 | [`dsh-autorevivw-hold`](./dsh-autorevivw-hold) | 在「设置 → 通用 → 权限」的默认权限模式中加入「自动审查（实验）」，切换时弹风险确认并可勾选不再提示 | desktop | ✅ 可用 |
+| [`dsh-find-plugin`](./dsh-find-plugin) | 让 agent 自己去 GitHub 的 `dsh-plugin` topic 里找插件，按 star 排序返回说明与安装命令；附 `/find-plugin` 斜杠命令 | desktop / web | ✅ 可用 |
 | [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
 - **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 在新会话创建时应用 Auto，风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
-- **`dsh-agent-config`**（未实现）：目前只有 [设计草案](./dsh-agent-config/doc/design.md)，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。
+- **`dsh-find-plugin`**（0.4.0）：复刻并适配上游 `dsh-find-plugin`，提供 `find_dsh_plugin` 工具与 `/find-plugin` 斜杠命令。命令本身不搜索，只把你的原话交给 agent，由 agent 决定 `query` / `limit` / `lang` 再调用工具。详见 [插件 README](./dsh-find-plugin/README.zh.md)。
+- **`dsh-agent-config`**（未实现）：目前只有设计草案，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。详见 [插件 README](./dsh-agent-config/README.md)。
 
-每个插件的安装命令、配置项和已知问题，以插件目录下的 README（或 `doc/`）为准。
+每个插件的安装命令、配置项和已知问题，以插件目录下的 README 为准。
 
 ## 文档
 
-| 文档 | 内容 |
-| :--- | :--- |
-| [`docs/installed-third-party-plugins.md`](./docs/installed-third-party-plugins.md) | 本机 `desktop` profile 已装三方插件的一次性盘点（版本、启用状态、孤儿包、可升级项）与复核命令 |
-| [`docs/ds-create.md`](./docs/ds-create.md) | DSH Agent 配置与「创造模式」开发指南（结论核对过 `ref/deepseek-harness` 源码） |
-| [`docs/gemini-create.md`](./docs/gemini-create.md) | 同主题指南：Cordis 微内核、Agent 预设体系与创造模式扩展 |
-| [`docs/cc-create.md`](./docs/cc-create.md) | 同主题指南：模式即预设、Agent 配置体系与创造模式运行逻辑 |
-| [`docs/account-menu-personalization.md`](./docs/account-menu-personalization.md) | 侧栏左下角「用户信息」入口如何个性化：渲染链路、数据来源、三条可行路径（阴影 `settings.launcher` / 主题图标 / 改官方包）与插件实现要点（结论核对过 `ref/deepseek-harness` 源码） |
-| [`docs/readme-local-images-in-dsh.md`](./docs/readme-local-images-in-dsh.md) | 为什么四份 README 的本地配图在 DSH 里不显示（渲染器相对路径解析 + `/api/file` 路由约束）与规避/修复选项 |
-| [`submodule.md`](./submodule.md) | `ref/` 下 submodule（添加、拉取、更新、删除）的通用操作与踩坑记录 |
+仓库级的调研与踩坑记录放在 [`docs/`](./docs/) 目录，按主题分文件；`ref/` 下 submodule 的通用操作说明见 [`submodule.md`](./submodule.md)。
 
-> 三份 `*-create.md` 是同一主题的不同版本，内容有重叠；要查结论以 `docs/ds-create.md` 为准（它标注了源码核对）。`docs/installed-third-party-plugins.md` 则是**某台机器在某个时间点的快照**，换机器或升级 DSH 后就会过期。
+> `docs/` 里有些是**某台机器在某个时间点的快照**（例如已装三方插件盘点），换机器或升级 DSH 后就会过期；查结论前先看文件头的时间与版本标注。
 
 ## 安装
 
@@ -177,6 +171,8 @@ export function apply(ctx) {
 
 写好后，按上面的「从本地文件夹安装」把插件目录装进 profile；能用 `dsh --profile web --dump-config` 看到插件层，就说明配置已生效。
 
+仓库内有两类写法：**纯 JavaScript**（入口直接放在插件目录，如 `dsh-a2d-workspace`）和 **TypeScript + 构建产物**（源码在 `src/`，`tsc` 输出到 `lib/`，如 `dsh-find-plugin`）。后者提交时要把 `lib/` 一并入库，因为安装是链接而非拷贝。
+
 更完整的说明见官方文档：[第一个插件](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/index.zh.md)、[打包与安装插件](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/basic/publish.zh.md)。
 
 ## 目录结构
@@ -198,20 +194,31 @@ dsh-plugin/
 │   ├── locale/               # 插件标题 / 描述（en / zh）
 │   ├── icon.svg
 │   └── README.md
+├── dsh-find-plugin/          # 插件：让 agent 自己找 DSH 插件
+│   ├── package.json
+│   ├── cordis.patch.yml
+│   ├── src/                  # TypeScript 源码
+│   ├── lib/                  # 构建产物（随仓库提交）
+│   ├── data/                 # 离线兜底的插件清单快照
+│   ├── test/                 # node --test 用例
+│   ├── README.md / README.zh.md
 ├── dsh-agent-config/         # 设计中，目前只有 doc/design.md
 │   ├── doc/design.md
 │   └── README.md             # 状态与设计稿入口
-├── docs/                     # 仓库级文档（环境盘点等）
+├── docs/                     # 仓库级调研与踩坑文档
 ├── asset/                    # 文档配图（README 图片统一放这里）
-├── ref/                      # submodule：只读参考仓库（deepseek-harness 等）
+├── ref/                      # submodule：只读参考仓库；deepseek-harness 即 DSH 本体源码
 ├── test/                     # 本地试验目录（不入库）
+├── AGENTS.md                 # 给 agent 的仓库工作约定
 ├── submodule.md              # submodule 操作说明
 ├── .dsh/                     # 本机工作区级配置（已 gitignore，不提交）
 ├── LICENSE
 └── README.md
 ```
 
-不同插件按需增减 `client.js`、`schema.js`、`locale/`、`icon.svg` 等文件。`ref/` 下是 submodule，只作为参考，**不要**用 `dsh plugin add` 安装它们；相关操作见 [submodule.md](./submodule.md)。
+不同插件按需增减 `client.js`、`schema.js`、`locale/`、`icon.svg`、`src/` 等文件。`ref/` 下是 submodule，只作为参考，**不要**用 `dsh plugin add` 安装它们；相关操作见 [submodule.md](./submodule.md)。
+
+其中 [`ref/deepseek-harness/`](./ref/deepseek-harness/) 是 **DSH 本体的完整开源源码**：改插件时对宿主行为（`ctx` 服务、事件、配置 schema、UI 槽位、patch 合并规则）有疑问，直接查这份源码比查文档更可靠。约定见 [AGENTS.md](./AGENTS.md)。
 
 ## 兼容性
 
