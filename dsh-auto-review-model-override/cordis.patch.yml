@@ -1,0 +1,6 @@
+- insert:
+    - id: auto-review-model-override
+      name: dsh-auto-review-model-override
+      config:
+        reviewProvider: happy
+        reviewModel: deepseek-v4.1-flash

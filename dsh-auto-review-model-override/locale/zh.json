@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "自动审查模型",
+    "description": "指定自动审查（Auto review）使用的模型，留空则沿用当前会话模型。"
+  }
+}

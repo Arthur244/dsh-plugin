@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Auto review model",
+    "description": "Pin the model that reviews tool calls; leave empty to reuse the session model."
+  }
+}
