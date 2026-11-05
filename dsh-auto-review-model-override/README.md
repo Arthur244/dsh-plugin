@@ -14,7 +14,7 @@ dsh plugin --profile desktop add "link:E:/Code/dsh-plugin/dsh-auto-review-model-
 cd dsh-auto-review-model-override && npm install
 ```
 
-Skipping this makes the Host half fail to load (`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`). The failure is easy to miss: the Web bundle is published from the package manifest and client entry alone (`packages/client/modules/src/index.ts:1072-1081`, which never imports the Host module), so the settings row can appear while the half that actually rewrites review routes is dead. Re-run `npm install` after pulling whenever `package.json` changes.
+Skipping this makes the Host half fail to load (`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`). The failure is easy to miss: the Web bundle is published from the package manifest and client entry alone (`packages/client/modules/src/index.ts:891-918`, which never imports the Host module), so the settings row can appear while the half that actually rewrites review routes is dead. Re-run `npm install` after pulling whenever `package.json` changes.
 
 ## Configure
 
@@ -50,12 +50,12 @@ The plugin stays out of the way when the review fields are empty. It still inter
 
 ## Why resilience is needed
 
-Upstream auto-review treats its two failure modes asymmetrically (`packages/experimental/auto-review/src/index.ts`, submodule `dsh-v0.2.2-alpha.2`):
+Upstream auto-review treats its two failure modes asymmetrically (`packages/experimental/auto-review/src/index.ts`, submodule `dsh-v0.2.2-rc.1`):
 
 | Situation | Path | Outcome |
 | :--- | :--- | :--- |
-| Model judged the call unsafe | `askUser()`, :703 | `ask` — a dialog lets you override |
-| Reviewer itself failed | `failed()`, :712 | `deny` — `info.code = AUTO_REVIEW_FAILED`, no override |
+| Model judged the call unsafe | `askUser()`, :712 | `ask` — a dialog lets you override |
+| Reviewer itself failed | `failed()`, :722 | `deny` — `info.code = AUTO_REVIEW_FAILED`, no override |
 
 Auto's approval policy is `ask` (`packages/interaction/permission-presets/src/index.ts:83-86`, whose comment states "`ask` routes reviewer denials to the user"), so a model denial becomes a prompt. `failed()` returns before ever reaching `askUser`, so a reviewer outage is a hard denial.
 
@@ -63,13 +63,13 @@ A single provider outage therefore blocks every tool call with no way to proceed
 
 ## How it works
 
-**Route rewrite** (`llm/stream` waterfall): review requests are recognized by their `REVIEW_POLICY` system-prompt prefix. Two Cordis details force the shape of the implementation. The waterfall's `next` takes no arguments — `next(newOptions)` is silently discarded (`vendor/cordis/src/events.ts:234-243`) — so the rewrite cannot be delegated through it. The review request is also `deepFreeze`d (:675), so in-place mutation throws. The plugin therefore re-enters `ctx.llm.stream` with a rebuilt request, marked to stop the recursion.
+**Route rewrite** (`llm/stream` waterfall): review requests are recognized by their `REVIEW_POLICY` system-prompt prefix. Two Cordis details force the shape of the implementation. The waterfall's `next` takes no arguments — `next(newOptions)` is silently discarded (`vendor/cordis/src/events.ts:246-261`) — so the rewrite cannot be delegated through it. The review request is also `deepFreeze`d (:682), so in-place mutation throws. The plugin therefore re-enters `ctx.llm.stream` with a rebuilt request, marked to stop the recursion.
 
-**Timeout / retry / fallback** (same `llm/stream`): failures arrive as a terminal `finish` chunk rather than a throw (`packages/llm/llm/src/index.ts:1186-1196`), so the stream must be drained to detect them. Each attempt buffers the whole stream before yielding anything — a review's output is just one JSON decision object assembled completely by `readDecision` (`src/index.ts:644-663`), never displayed as a stream, so buffering makes "already emitted" a reversible state: a mid-stream failure retries cleanly instead of leaving half an answer overwritten.
+**Timeout / retry / fallback** (same `llm/stream`): failures arrive as a terminal `finish` chunk rather than a throw (`packages/llm/llm/src/index.ts:1187-1196`), so the stream must be drained to detect them. Each attempt buffers the whole stream before yielding anything — a review's output is just one JSON decision object assembled completely by `readDecision` (`src/index.ts:643-667`), never displayed as a stream, so buffering makes "already emitted" a reversible state: a mid-stream failure retries cleanly instead of leaving half an answer overwritten.
 
 The timeout aborts the underlying request through a local `AbortController` (rather than only discarding the result via `Promise.race`), so it leaves no orphan stream still executing server-side. An abort caused by the timeout is reclassified locally as `TIMEOUT`, kept strictly distinct from an upstream cancellation — the former is retryable, the latter must stop immediately.
 
-**Ask-on-failure** (same `llm/stream`): when every route fails, the plugin synthesizes a valid review decision stream instead of throwing. Throwing cannot work: the `failed()` branch returns `deny` outright (`:712-719`) and never reaches `askUser`; that dialog only opens for `decision.decision === 'deny'` under a non-`never` approval policy (`:767-768`), and Auto's approval is exactly `ask` (`packages/interaction/permission-presets/src/index.ts:83-86`). So `onFailure: ask` synthesizes a `deny`, `allow` synthesizes a pass, and `deny` still throws to keep the upstream hard refusal. The payload follows `parseDecision` (`:607-636`) and the block order satisfies `readDecision`'s "reasoning* then exactly one text" rule (`:659-661`). Synthesizing inside `llm/stream` depends on no listener registration order.
+**Ask-on-failure** (same `llm/stream`): when every route fails, the plugin synthesizes a valid review decision stream instead of throwing. Throwing cannot work: the `failed()` branch returns `deny` outright (`:722-729`) and never reaches `askUser`; that dialog only opens for `decision.decision === 'deny'` under a non-`never` approval policy (`:770-776`), and Auto's approval is exactly `ask` (`packages/interaction/permission-presets/src/index.ts:83-86`). So `onFailure: ask` synthesizes a `deny`, `allow` synthesizes a pass, and `deny` still throws to keep the upstream hard refusal. The payload follows `parseDecision` (`:614-640`) and the block order satisfies `readDecision`'s "reasoning* then exactly one text" rule (`:661-665`). Synthesizing inside `llm/stream` depends on no listener registration order.
 
 The bundled `@deepseek-ai/dsh-llm-retry` cannot help here: it listens on `agent/request-error` (`packages/llm/llm-retry/src/index.ts:240`), which covers the main conversation's failed step. A review is a bare `ctx.llm.stream` call that produces no agent step.
 

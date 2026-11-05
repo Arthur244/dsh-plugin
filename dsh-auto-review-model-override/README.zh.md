@@ -14,7 +14,7 @@ dsh plugin --profile desktop add "link:E:/Code/dsh-plugin/dsh-auto-review-model-
 cd dsh-auto-review-model-override && npm install
 ```
 
-不装会让 Host 侧加载失败（`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`）。这个故障不容易察觉：Web 侧 bundle 是仅凭 package manifest 和 client 入口发布的（`packages/client/modules/src/index.ts:1072-1081`，全程不 import Host 模块），所以设置行照样能渲染，而真正改写审查路由的那一半已经失效。`package.json` 变化后重新拉取代码，记得再跑一次 `npm install`。
+不装会让 Host 侧加载失败（`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`）。这个故障不容易察觉：Web 侧 bundle 是仅凭 package manifest 和 client 入口发布的（`packages/client/modules/src/index.ts:891-918`，全程不 import Host 模块），所以设置行照样能渲染，而真正改写审查路由的那一半已经失效。`package.json` 变化后重新拉取代码，记得再跑一次 `npm install`。
 
 ## 配置
 
@@ -50,12 +50,12 @@ cd dsh-auto-review-model-override && npm install
 
 ## 为什么需要容灾
 
-官方 auto-review 对两种失败的待遇是不对称的（核对 `packages/experimental/auto-review/src/index.ts`，submodule `dsh-v0.2.2-alpha.2`）：
+官方 auto-review 对两种失败的待遇是不对称的（核对 `packages/experimental/auto-review/src/index.ts`，submodule `dsh-v0.2.2-rc.1`）：
 
 | 情况 | 代码路径 | 结果 |
 | :--- | :--- | :--- |
-| 模型判定不安全 | `askUser()`，:703 | `ask`，弹窗让你决定，可放行 |
-| 审查器故障 | `failed()`，:712 | `deny`，`info.code = AUTO_REVIEW_FAILED`，无放行机会 |
+| 模型判定不安全 | `askUser()`，:712 | `ask`，弹窗让你决定，可放行 |
+| 审查器故障 | `failed()`，:722 | `deny`，`info.code = AUTO_REVIEW_FAILED`，无放行机会 |
 
 因为 Auto 预设的 approval 是 `ask`（`packages/interaction/permission-presets/src/index.ts:83-86`，注释明写 "`ask` routes reviewer denials to the user"），模型拒绝会转成弹窗；但 `failed()` 在到达 `askUser` 之前就 `return` 了，所以审查器故障**直接硬拒**。
 
@@ -63,13 +63,13 @@ cd dsh-auto-review-model-override && npm install
 
 ## 实现
 
-**路由改写**（`llm/stream` 瀑布）：按 `REVIEW_POLICY` system prompt 开头识别审查请求。有两个 Cordis 细节决定实现方式——瀑布的 `next` 不接受参数（`next(newOptions)` 会被静默丢弃，`vendor/cordis/src/events.ts:234-243`），所以不能借它改路由；审查请求又被 `deepFreeze`（:675），原地赋值会抛错。因此插件用重建后的请求重新进入 `ctx.llm.stream`，并打标记阻止递归。
+**路由改写**（`llm/stream` 瀑布）：按 `REVIEW_POLICY` system prompt 开头识别审查请求。有两个 Cordis 细节决定实现方式——瀑布的 `next` 不接受参数（`next(newOptions)` 会被静默丢弃，`vendor/cordis/src/events.ts:246-261`），所以不能借它改路由；审查请求又被 `deepFreeze`（:682），原地赋值会抛错。因此插件用重建后的请求重新进入 `ctx.llm.stream`，并打标记阻止递归。
 
-**超时 / 重试 / 降级**（同在 `llm/stream`）：失败不是异常而是终止性的 `finish` chunk（`packages/llm/llm/src/index.ts:1186-1196`），所以必须遍历流才能发现。每次尝试把整条流收进缓冲区后才交给调用方——审查的输出只是一个 JSON 决策对象，由 auto-review 的 `readDecision` 完整收集后再解析（`src/index.ts:644-663`），不做流式展示；先收再发意味着「已输出」不是不可逆状态，中途失败也能安全重试而不会出现半截内容被覆盖。
+**超时 / 重试 / 降级**（同在 `llm/stream`）：失败不是异常而是终止性的 `finish` chunk（`packages/llm/llm/src/index.ts:1187-1196`），所以必须遍历流才能发现。每次尝试把整条流收进缓冲区后才交给调用方——审查的输出只是一个 JSON 决策对象，由 auto-review 的 `readDecision` 完整收集后再解析（`src/index.ts:643-667`），不做流式展示；先收再发意味着「已输出」不是不可逆状态，中途失败也能安全重试而不会出现半截内容被覆盖。
 
 超时通过本地 `AbortController` 真正 abort 底层请求（而非只靠 `Promise.race` 丢弃结果），避免留下仍在服务端执行的「孤儿流」；超时触发的 abort 会在本地被重新归类为 TIMEOUT，与「上游取消」严格区分——前者可重试，后者必须立即收手。
 
-**兜底转人工**（同在 `llm/stream`）：所有路由都失败时不再抛错，而是**合成一条合法的审查决策流**交给审查器。不能靠抛错：`failed()` 分支直接 `return deny`（`:712-719`），永远到不了 `askUser`；只有 `decision.decision === 'deny'` 且 approval 策略非 `never` 时才弹出人工确认（`:767-768`），而 Auto 预设的 approval 恰为 `ask`（`packages/interaction/permission-presets/src/index.ts:83-86`）。因此 `onFailure: ask` 合成 `deny`，审查器便会调用 `askUser`；`allow` 合成放行；`deny` 仍抛错保持官方硬拒。合成格式取自 `parseDecision`（`:607-636`），块顺序满足 `readDecision` 的「reasoning* + 紧跟一个 text」要求（`:659-661`）。在 `llm/stream` 层合成不依赖任何监听注册顺序。
+**兜底转人工**（同在 `llm/stream`）：所有路由都失败时不再抛错，而是**合成一条合法的审查决策流**交给审查器。不能靠抛错：`failed()` 分支直接 `return deny`（`:722-729`），永远到不了 `askUser`；只有 `decision.decision === 'deny'` 且 approval 策略非 `never` 时才弹出人工确认（`:770-776`），而 Auto 预设的 approval 恰为 `ask`（`packages/interaction/permission-presets/src/index.ts:83-86`）。因此 `onFailure: ask` 合成 `deny`，审查器便会调用 `askUser`；`allow` 合成放行；`deny` 仍抛错保持官方硬拒。合成格式取自 `parseDecision`（`:614-640`），块顺序满足 `readDecision` 的「reasoning* + 紧跟一个 text」要求（`:661-665`）。在 `llm/stream` 层合成不依赖任何监听注册顺序。
 
 注意底层的 `@deepseek-ai/dsh-llm-retry` 帮不上忙：它挂在 `agent/request-error`（`packages/llm/llm-retry/src/index.ts:240`），处理主对话的失败步，而审查是一次独立的 `ctx.llm.stream` 裸调用，不产生 agent 步。
 

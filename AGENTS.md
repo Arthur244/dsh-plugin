@@ -4,7 +4,7 @@
 
 ## 源码就在本地：`ref/deepseek-harness/`
 
-> **这是本仓库最重要的一条约定。** [`ref/deepseek-harness/`](./ref/deepseek-harness/) 是 **DSH 本体的完整开源源码**（git submodule，当前 `dsh-v0.2.2-alpha.2`，用 `git -C ref/deepseek-harness describe --tags` 查实际版本）。
+> **这是本仓库最重要的一条约定。** [`ref/deepseek-harness/`](./ref/deepseek-harness/) 是 **DSH 本体的完整开源源码**（git submodule，当前 `dsh-v0.2.2-rc.1`，与桌面端已安装的 0.2.2-rc.1 同源，用 `git -C ref/deepseek-harness describe --tags` 查实际版本）。
 
 **凡是涉及 DSH 自身行为的问题——插件 API、`ctx` 上有哪些服务和方法、事件名与载荷、`SessionEventMap`、配置 schema、profile / bundle / patch 的合并规则、客户端 UI 槽位、CLI 子命令、权限与沙箱策略——都不要凭记忆、猜测或网上二手资料回答，直接在这个源码树里查证后再写代码或写文档。**
 

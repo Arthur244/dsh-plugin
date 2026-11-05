@@ -6,10 +6,10 @@
  * 官方 @deepseek-ai/dsh-experimental-auto-review 的 reviewer 直接用最新
  * request/header 的 provider/model 调 ctx.llm.stream，没有配置入口。
  *
- * 关键约束（核对 vendor/cordis/src/events.ts:234-243）：
+ * 关键约束（核对 vendor/cordis/src/events.ts:246-261）：
  *  - waterfall 的 `next` 签名是 `() => result`，传参会被完全丢弃，因此不能
  *    用 `next(newOptions)` 改路由。
- *  - 审查 options 在 auto-review 里被 deepFreeze（src/index.ts:675），严格
+ *  - 审查 options 在 auto-review 里被 deepFreeze（src/index.ts:682），严格
  *    模式下原地赋值会抛 TypeError，因此也不能照抄官方测试里的原地修改。
  *
  * 唯一可行做法：在 listener 内重启一次 llm.stream，把新路由交给 waterfall
@@ -17,9 +17,9 @@
  *
  * ## 为什么需要容灾
  *
- * 审查器故障走 auto-review 的 `failed()` 分支（src/index.ts:712-719），产出
+ * 审查器故障走 auto-review 的 `failed()` 分支（src/index.ts:722-729），产出
  * `deny` + `info.code === 'AUTO_REVIEW_FAILED'`，**不经过** `askUser`。而模型
- * 主动拒绝会经过 `askUser` 变弹窗（src/index.ts:768）。于是单点 provider 故障
+ * 主动拒绝会经过 `askUser` 变弹窗（src/index.ts:776）。于是单点 provider 故障
  * 会让所有工具调用直接失败且无法放行——比模型拒绝还严厉。
  *
  * 本插件补上这个不对称：
@@ -31,7 +31,7 @@
  * 第 1-4 步都在 `llm/stream` 瀑布内完成（重新发起请求，审查插件无感知）。
  * 兜底靠「合成决策」而非「让审查器报错」：`failed()` 分支直接 `return deny`，
  * 永远到不了 `askUser`；只有 `decision.decision === 'deny'` 且 approval 策略
- * 非 `never` 时才弹人工确认（src/index.ts:767-768），而 Auto 预设的 approval
+ * 非 `never` 时才弹人工确认（src/index.ts:770-776），而 Auto 预设的 approval
  * 恰为 `ask`（packages/interaction/permission-presets/src/index.ts:83-86）。
  * 因此 onFailure=ask 合成 deny 触发 askUser，allow 合成放行，deny 抛错硬拒。
  */
@@ -121,7 +121,7 @@ function describeFailure(failure) {
  * `Promise.race` 丢弃结果——后者会留下一个仍在服务端执行的「孤儿流」，
  * 每次超时重试都会让 provider 多收到一次完整请求。
  *
- * 超时 abort 会让下游 `adapterFailureChunk`（packages/llm/llm/src/index.ts:1190-1193）
+ * 超时 abort 会让下游 `adapterFailureChunk`（packages/llm/llm/src/index.ts:1191-1194）
  * 把终止标成 `kind: 'aborted'`，但本函数用 `timedOut` 标志在本地把它
  * 重新归类为 TIMEOUT，与「调用方取消」（上游 signal abort）严格区分：
  * 前者可重试，后者必须立即收手。
@@ -195,10 +195,10 @@ async function collectOnce(ctx, options, signal, timeoutMs) {
  *
  * `kind === 'allow'` 合成放行决策（审查器直接放行）；否则合成 `deny` 决策，
  * 审查器会因 `decision.decision === 'deny'` 且 approval 策略为 ask 而调用
- * `askUser`（src/index.ts:767-768），弹出人工确认——这正是 `failed()` 分支
+ * `askUser`（src/index.ts:770-776），弹出人工确认——这正是 `failed()` 分支
  * 永远到不了的地方。
  *
- * 格式取自 auto-review 的 `parseDecision`（src/index.ts:607-636）：deny 需
+ * 格式取自 auto-review 的 `parseDecision`（src/index.ts:614-640）：deny 需
  * 恰好三个成员（risk / decision / reason），reason 为字符串。
  *
  * 合成的只是「模型判定」，命令仍要用户点确认才执行；把关没有消失，只是

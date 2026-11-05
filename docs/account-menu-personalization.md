@@ -1,9 +1,9 @@
 # 左下角用户信息处（侧栏账号入口）个性化调研
 
-> 依据源码：[`ref/deepseek-harness`](../ref/deepseek-harness)（submodule，`f3803c9697 release(dsh): 0.2.2-alpha.2`）。
-> 核对对象：本机运行中的桌面端 `0.2.1-rc.5`（`resources/app.asar` 反查了槽位、`ctx.remoteAccess`、主题图标替换、`dsh.client` 扫描等关键实现，与源码一致；仅当行为有差异时才会在文中注明）。
+> 依据源码：[`ref/deepseek-harness`](../ref/deepseek-harness)（submodule，`66491b05e3 release(dsh): 0.2.2-rc.1`；初版核对的是 `f3803c9697 0.2.2-alpha.2`，2026-11-05 升级 submodule 时重新逐条对过下文所有行号，槽位、`ctx.remoteAccess`、主题图标替换、`dsh.client` 扫描等结论在 rc.1 上仍成立）。
+> 核对对象：初版核对的是本机当时的桌面端 `0.2.1-rc.5`（`resources/app.asar` 反查了槽位、`ctx.remoteAccess`、主题图标替换、`dsh.client` 扫描等关键实现，与当时的源码一致）。**2026-11-05 复核时的本机版本已升级到 `0.2.2-rc.1`**（`resources/app.asar` 内 `package.json` 与 `dsh/desktop-runtime.json` 均为 `0.2.2-rc.1`，与本次升级后的 submodule 同源）；本轮只对源码行号做了逐条复核，未再逐项反查 asar。
 > 参考插件：[`dsh-autorevivw-hold`](../dsh-autorevivw-hold)（同为阴影官方槽位的第三方 client 插件，可直接当模板）。
-> 调研时间：2026-10-31。
+> 调研时间：2026-10-31；源码版本复核：2026-11-05。
 
 ---
 
@@ -42,7 +42,7 @@ SettingsRoot (ui-settings-general，占据 sidebar.settings 的侧栏尾部)
 | 关注点 | 文件:行 |
 | :--- | :--- |
 | 槽类型声明（唯一权威） | `ui-settings/src/client/contract/slots.ts:17` — `'settings.launcher': { kind: 'single'; scope: 'root'; owner: SettingsLauncherOwnerProps }` |
-| 运行时声明 + 渲染 | `ui-settings-general/src/client/SettingsRoot.tsx:222`；`ui-settings-general/src/client/index.ts:220` |
+| 运行时声明 + 渲染 | `ui-settings-general/src/client/SettingsRoot.tsx:226`；`ui-settings-general/src/client/index.ts:220` |
 | 官方占用者注册 | `ui-settings-account/src/client/index.ts:333` — `ctx.remoteAccess.whenAccess('account/watch', () => ctx.slots.inject('settings.launcher', () => ctx.slots.register({ name: 'settings.launcher', locale: 'settings.account', inject: () => operations }, AccountMenu)))` |
 | 入口组件 | `ui-settings-account/src/client/AccountMenu.tsx` |
 | 头像组件 | `ui-settings-account/src/client/AccountAvatar.tsx`（`img` 或 `IconUserOutlineMedium size={16}`） |
@@ -89,7 +89,7 @@ const priority = options.priority ?? 0
 - 官方注册没写 `priority` → 取默认 `0`；
 - 第三方写 `priority: -1` 即可「阴影」，写 `0` 会在激活时**直接抛错**（不是静默覆盖）；
 - 数值最低者渲染，卸载后自动回落到官方条目（effect 生命周期）；
-- `docs/subsystems/slots.zh.md:66`：「复用已有 cell 表示有意替换其展示」——阴影是官方认可的机制，`ui-settings-general/README.zh.md:69` 也明确「贡献入口自行拥有内缩」。
+- `docs/subsystems/slots.zh.md:68`：「复用已有 cell 表示有意替换其展示」——阴影是官方认可的机制，`ui-settings-general/README.zh.md:69` 也明确「贡献入口自行拥有内缩」。
 
 已经在本机验证过的先例：`dsh-autorevivw-hold` 用同样的方式阴影了 `settings.general.item` 的官方权限行（`client.js` 中 `priority: -1` 复用 `id: 'permission'`）。
 
@@ -143,7 +143,7 @@ ctx.theme.register({
 
 只能改颜色类 token：`--dsw-alias-interactive-bg-hover`、`--dsw-alias-brand-primary`、`--dsw-radius-md`、`--dsw-alias-bg-skeleton` 等；**不能**改文案、尺寸、结构。适合「悬停色 / 头像底环色 / 品牌主色」这类轻量定制。
 
-**B3. 浏览器标题**：`AppFrame.tsx:233` 取 `process.env.DSH_CLIENT_TITLE ?? t('brand.localBuild')`，构建期决定；运行期只能旁路改 `document.title`（注意 `DocumentTitle.tsx` 会在 session 切换时重写，需要 MutationObserver 跟随）。本机装着的 `dsh-style-tweaks` 0.1.8 没有做这一项（已查 `lib/client.js`），不会冲突。
+**B3. 浏览器标题**：`AppFrame.tsx:261` 取 `process.env.DSH_CLIENT_TITLE ?? t('brand.localBuild')`，构建期决定；运行期只能旁路改 `document.title`（注意 `DocumentTitle.tsx` 会在 session 切换时重写，需要 MutationObserver 跟随）。本机装着的 `dsh-style-tweaks` 0.1.8 没有做这一项（已查 `lib/client.js`），不会冲突。
 
 ### C. 官方包内改造（仅源码自建）
 
@@ -228,7 +228,7 @@ window.__ModuleLoader__.load({
 - `priority: -1` 写在 register options 的最外层（`KindOptions`，`ui-slots/src/index.ts:770-797`），不是 `inject` 里；
 - 组件 props 只拿 `PropsRuntime` 的 owner 值 + 注入面；**组件里不碰 ctx**；
 - 文本用 `t(...)`，语言切换时 `t` 是「按 revision 新函数引用」（`ui-renderer/src/client/scoped-slots.tsx` 的 `localeSeat`），memo 组件会随语言刷新；
-- 需要在 `dsh.client.inject` 里声明 `@deepseek-ai/dsh-client-ui-settings`、`@deepseek-ai/dsh-client-ui-settings-general`，但它们只是加载/诊断用的**信息性边**（`ui-workspace/src/client/index.ts:97` 有明确说明），真正的等待必须靠 `ctx.slots.inject`。
+- 需要在 `dsh.client.inject` 里声明 `@deepseek-ai/dsh-client-ui-settings`、`@deepseek-ai/dsh-client-ui-settings-general`，但它们只是加载/诊断用的**信息性边**（`ui-workspace/src/client/index.ts:98` 有明确说明），真正的等待必须靠 `ctx.slots.inject`。
 
 ### 3.4 样式约束
 
@@ -249,7 +249,7 @@ window.__ModuleLoader__.load({
 1. **只有 owner 才有这个槽**：`account/watch` 无授权时官方注册都不存在，`slots.inject` 回调不会执行。阴影件同样要用 `whenAccess` 包住，否则会在别人页面上出个性化入口。
 2. **只能「加」，不能「进」官方菜单**：官方 `Menu` 的 `items` 是闭包常量（`AccountMenu.tsx:74-81`）。要加菜单项只能叠自己的浮层；没有 `menuClassName`/`renderItem` 扩展位——`Menu` 组件本身有 `className/listClassName`，但那是官方内部使用的 props，插件拿不到它的实例。
 3. **CSS 类名是 hash**（`css-modules`），跨插件只能用属性锚点：`button[aria-haspopup="menu"]`、`button[aria-label="账号菜单"]`、`ul[aria-haspopup="menu"]`、`[data-avatar-status]`、`[data-signed-out]`、`[data-collapsed]`。本机 `dsh-style-tweaks` 用的也是同样的锚点策略（`[class*="_settingsArea"]` 这种是脆弱写法，不建议）。
-4. **Portal 的祖先必须是官方锚点子树**：`Menu.tsx:337-346` 的「点击外部关闭」只看 `rootRef`（锚点子树）与 `listRef`（portaled 列表）是否 `contains(e.target)`。
+4. **Portal 的祖先必须是官方锚点子树**：`Menu.tsx:355-364` 的「点击外部关闭」只看 `rootRef`（锚点子树）与 `listRef`（portaled 列表）是否 `contains(e.target)`。
    - A2 把内容 Portal 进**官方触发按钮的祖先节点**时，点击仍算内部，菜单不会误关；Portal 到 `document.body` 则会一点就关；
    - `getAnchorRect` 只在「你自己的浮层需要跟着官方按钮定位」时用到（portal 模式传矩形而不是元素），与官方菜单无关；
    - 在 React 事件外面同步改 DOM 时，对 React 树内节点用 `flushSync`，否则叠层内容可能滞后一拍。
@@ -345,14 +345,14 @@ window.__ModuleLoader__.load({
 | 主题 | 路径（`ref/deepseek-harness/` 下） |
 | :--- | :--- |
 | 槽位契约 | `packages/client/ui-settings/src/client/contract/slots.ts:17` |
-| 槽外框与渲染 | `packages/client/ui-settings-general/src/client/SettingsRoot.tsx:222` |
+| 槽外框与渲染 | `packages/client/ui-settings-general/src/client/SettingsRoot.tsx:226` |
 | 官方启动器 | `packages/client/ui-settings-account/src/client/AccountMenu.tsx`、`AccountAvatar.tsx`、`account-avatar.ts`、`AccountMenu.module.css` |
 | 官方注册与数据刷新 | `packages/client/ui-settings-account/src/client/index.ts:49,106,182,333` |
 | 账户页（不可插件化） | `packages/client/ui-settings-account/src/client/AccountSection.tsx:93-171` |
 | 账户投影类型 | `packages/credentials/deepseek-account/src/types.ts:44-58`；`packages/credentials/deepseek-account-platform/src/details.ts:6-44` |
 | Remote 端点 | `packages/api/account-controller/src/index.ts` |
 | 访问控制 | `packages/api/remote-access/src/client/mount.ts:55`；`packages/api/remote-access/README.zh.md:65` |
-| 槽优先级语义 | `packages/client/ui-slots/src/index.ts:1215-1220`；`docs/subsystems/slots.zh.md:58-66` |
-| 主题图标/token | `packages/client/ui-theme/src/client/index.ts:354,388`；`packages/client/ui-theme/src/client/icon-sprite.ts:12,31`；`packages/client/ui-primitives/src/icons/artwork.ts:60,145` |
-| 浏览器标题 | `packages/client/ui-layout/src/client/AppFrame.tsx:233`；`packages/client/ui-layout/src/client/DocumentTitle.tsx` |
-| client 插件装载 | `docs/subsystems/client-modules.zh.md`；`packages/client/modules/src/index.ts:890-910`；`docs/cookbook/adding-a-settings-card.zh.md` 第 5 节 |
+| 槽优先级语义 | `packages/client/ui-slots/src/index.ts:1215-1220`；`docs/subsystems/slots.zh.md:60-68` |
+| 主题图标/token | `packages/client/ui-theme/src/client/index.ts:354,388`；`packages/client/ui-theme/src/client/icon-sprite.ts:12,31`；`packages/client/ui-primitives/src/icons/artwork.ts:61,146` |
+| 浏览器标题 | `packages/client/ui-layout/src/client/AppFrame.tsx:261`；`packages/client/ui-layout/src/client/DocumentTitle.tsx` |
+| client 插件装载 | `docs/subsystems/client-modules.zh.md`；`packages/client/modules/src/index.ts:891-918`；`docs/cookbook/adding-a-settings-card.zh.md` 第 5 节 |
