@@ -2,7 +2,7 @@ window.__ModuleLoader__.load({
   id: 'dsh-auto-review-model-override',
   factory: (require) => {
     const React = require('react')
-    const { Menu } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const { Menu, IconCheckOutlineRegular } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
 
     /** Plugin config namespace (equals the Loader entry id). */
@@ -40,8 +40,40 @@ window.__ModuleLoader__.load({
       'noModels': 'This provider has no configured models',
     }
 
+    /**
+     * The selected-row marker: a brand-colored check.
+     *
+     * Submenu rows cannot use the Menu's own `selectedId` — it only marks
+     * top-level entries (`Menu.tsx:488`), and the model being selected lives
+     * one level down. So the marker is drawn as the row's leading icon, which
+     * the Menu renders for any entry, including submenu rows (`Menu.tsx:486`
+     * and `:504`). `IconProps` accepts only `size` and `className` (icons/props.ts),
+     * so the brand color wraps the icon rather than being passed to it.
+     * @returns the icon element.
+     */
+    function Check() {
+      return h('span', { style: { display: 'inline-flex', color: styles.markColor.color } },
+        h(IconCheckOutlineRegular, { size: 14 }))
+    }
+
+    /**
+     * A menu label that carries the check when its row is the current choice.
+     *
+     * Uses font weight and color in addition to the icon, so the selection
+     * survives colorblindness and low-contrast themes.
+     * @param text - the visible name.
+     * @param selected - whether this row is the current selection.
+     * @returns the label node.
+     */
+    function SelectedLabel(text, selected) {
+      return selected
+        ? h('span', { style: { fontWeight: 600, color: styles.markColor.color } }, text)
+        : text
+    }
+
     /** Minimal inline styles so the row needs no CSS module pipeline. */
     const styles = {
+      markColor: { color: 'var(--dsw-alias-brand-primary, #4d6bfe)' },
       row: {
         display: 'flex',
         alignItems: 'center',
@@ -282,15 +314,24 @@ window.__ModuleLoader__.load({
       const items = groups.length === 0
         ? [{ id: '__empty', label: t('noProviders'), disabled: true }]
         : [
-            { id: '__unset', label: t('unset') },
+            { id: '__unset', label: t('unset'), icon: snapshot.provider === '' ? Check() : undefined },
             ...groups.map((group) => ({
               id: `provider:${group.id}`,
-              label: group.name + (group.id === snapshot.provider ? ' *' : ''),
+              // A provider is "current" only when it is both the configured
+              // route and has a model picked; otherwise the trailing check
+              // would claim a complete selection that does not exist yet.
+              label: SelectedLabel(group.name, group.id === snapshot.provider && snapshot.model !== ''),
               submenu: (group.models ?? []).length === 0
                 ? [{ id: '__nomodels', label: t('noModels'), disabled: true }]
                 : (group.models ?? []).map((entry) => ({
                     id: `model:${group.id}:${entry.id}`,
-                    label: entry.name + (group.id === snapshot.provider && entry.id === snapshot.model ? ' *' : ''),
+                    label: SelectedLabel(
+                      entry.name,
+                      group.id === snapshot.provider && entry.id === snapshot.model,
+                    ),
+                    icon: group.id === snapshot.provider && entry.id === snapshot.model
+                      ? Check()
+                      : undefined,
                   })),
             })),
           ]
@@ -331,6 +372,7 @@ window.__ModuleLoader__.load({
         }))
     }
 
+
     const inject = ['configForms', 'connection', 'locale', 'remote', 'remote.permissionPresets', 'remote.session', 'remote.settings', 'slots']
 
     return {
@@ -363,7 +405,7 @@ window.__ModuleLoader__.load({
         let disposed = false
 
         const mount = () => {
-          disposing = ctx.slots.register({
+          const disposeModel = ctx.slots.register({
             name: 'settings.general.item',
             // Sits directly under the permission row (order -20) and above
             // the shipped Language row (order 0).
@@ -378,6 +420,7 @@ window.__ModuleLoader__.load({
               loadCatalog: () => controller.loadCatalog(),
             }),
           }, Row)
+          disposing = () => { disposeModel() }
           registered = true
         }
 

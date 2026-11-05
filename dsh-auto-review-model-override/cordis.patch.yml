@@ -4,3 +4,8 @@
       config:
         reviewProvider: happy
         reviewModel: deepseek-v4.1-flash
+        # Retries run on the review route; when they run out the plugin falls
+        # back to the session's own model automatically, so no fallback route
+        # is needed here. Set fallbackProvider/fallbackModel only to pin a
+        # specific third route instead.
+        onFailure: ask
