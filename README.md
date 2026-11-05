@@ -37,11 +37,13 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | [`dsh-a2d-workspace`](./dsh-a2d-workspace) | 把外部 ACP 客户端（Zed 等）产生的会话按 `cwd` 自动归入桌面端「工作区」，在会话侧栏按目录名分组 | desktop | ✅ 可用 |
 | [`dsh-autorevivw-hold`](./dsh-autorevivw-hold) | 在「设置 → 通用 → 权限」的默认权限模式中加入「自动审查（实验）」，切换时弹风险确认并可勾选不再提示 | desktop | ✅ 可用 |
 | [`dsh-find-plugin`](./dsh-find-plugin) | 让 agent 自己去 GitHub 的 `dsh-plugin` topic 里找插件，按 star 排序返回说明与安装命令；附 `/find-plugin` 斜杠命令 | desktop / web | ✅ 可用 |
+| [`dsh-auto-review-model-override`](./dsh-auto-review-model-override) | 为官方 Auto review 单独指定审查模型，并给审查链路补上超时 / 重试 / 降级 / 兜底 | desktop | ✅ 可用 |
 | [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
 - **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 在新会话创建时应用 Auto，风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
 - **`dsh-find-plugin`**（0.4.0）：复刻并适配上游 `dsh-find-plugin`，提供 `find_dsh_plugin` 工具与 `/find-plugin` 斜杠命令。命令本身不搜索，只把你的原话交给 agent，由 agent 决定 `query` / `limit` / `lang` 再调用工具。详见 [插件 README](./dsh-find-plugin/README.zh.md)。
+- **`dsh-auto-review-model-override`**（0.1.0）：官方 Auto review 的 reviewer 固定复用当前会话的 provider/model、没有配置入口，且审查链路故障时直接硬拒（比模型拒绝更严厉）。本插件接管 `llm/stream` 里以 `REVIEW_POLICY` 开头的审查请求，把它改派到指定路由，并按「审查路由重试 → 显式降级 → 会话模型」逐级回落，全部失败后按配置合成决策或弹人工确认。详见 [插件 README](./dsh-auto-review-model-override/README.zh.md)。
 - **`dsh-agent-config`**（未实现）：目前只有设计草案，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。详见 [插件 README](./dsh-agent-config/README.md)。
 
 每个插件的安装命令、配置项和已知问题，以插件目录下的 README 为准。
@@ -202,6 +204,16 @@ dsh-plugin/
 │   ├── data/                 # 离线兜底的插件清单快照
 │   ├── test/                 # node --test 用例
 │   ├── README.md / README.zh.md
+├── dsh-auto-review-model-override/  # 插件：为 Auto review 指定审查模型 + 容灾
+│   ├── package.json
+│   ├── cordis.patch.yml
+│   ├── index.js              # Host 侧入口（改写 llm/stream 审查路由）
+│   ├── schema.js             # 插件配置 schema（依赖 schemastery）
+│   ├── client.js             # Web UI 入口（设置页模型选择行）
+│   ├── locale/               # 插件标题 / 描述（en / zh）
+│   ├── icon.svg
+│   ├── node_modules/         # link 安装需要，不入库；npm install 生成
+│   └── README.md / README.zh.md
 ├── dsh-agent-config/         # 设计中，目前只有 doc/design.md
 │   ├── doc/design.md
 │   └── README.md             # 状态与设计稿入口
@@ -224,6 +236,8 @@ dsh-plugin/
 
 - DSH 目前是 **developer preview**，插件 API 和宿主行为都可能变。
 - 每个插件用 `engines.dsh`（或 `@deepseek-ai/dsh-*` peer 依赖）声明支持的版本范围。
+- 宿主只校验 `engines.dsh`，以及**以 `@deepseek-ai/dsh-` 开头**的 peer 依赖（`@deepseek-ai/cordis`、`@deepseek-ai/schemastery` 这类不在校验范围内，`packages/boot/app-boot/src/plugin-compatibility.ts:70-78`）。所以 `cordis` 的 peer 范围写宽一点没有坏处，写窄了也不会阻断启动，但会与实际已装版本不符。
+- **`link:` 安装按插件目录解析依赖**，不会回落到 profile 的 `node_modules`。插件如果在运行期 `import` 了某个包（例如 `schema.js` 里的 `@deepseek-ai/schemastery`），就必须在自己的目录里装好它，否则 Host 侧会以 `ERR_MODULE_NOT_FOUND` 加载失败——而 Web 侧 bundle 仍能正常发布，表现成「设置行在、功能不在」。装完或拉取代码后记得在插件目录跑一次 `npm install`。
 - 插件失效时，优先找兼容的新版本，而不是改宿主或跳过版本校验。
 - 本仓库不承诺跨 DSH 版本可用。
 

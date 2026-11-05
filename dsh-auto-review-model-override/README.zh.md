@@ -8,6 +8,14 @@
 dsh plugin --profile desktop add "link:E:/Code/dsh-plugin/dsh-auto-review-model-override"
 ```
 
+`index.js` 会 `import './schema.js'`，而后者 `import '@deepseek-ai/schemastery'`。`link:` 安装按**插件自己所在目录**解析依赖，不会回落到 profile 的 `node_modules`，所以这个包必须装在本目录里：
+
+```sh
+cd dsh-auto-review-model-override && npm install
+```
+
+不装会让 Host 侧加载失败（`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`）。这个故障不容易察觉：Web 侧 bundle 是仅凭 package manifest 和 client 入口发布的（`packages/client/modules/src/index.ts:1072-1081`，全程不 import Host 模块），所以设置行照样能渲染，而真正改写审查路由的那一半已经失效。`package.json` 变化后重新拉取代码，记得再跑一次 `npm install`。
+
 ## 配置
 
 设置 → 通用，权限行下方出现**「自动审查模型」**一行：选择审查使用的 provider 与模型。二级菜单从当前进程真实注册的 provider/模型列表里选，不用手填 id。

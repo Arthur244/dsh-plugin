@@ -76,7 +76,10 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "~4.0.5"
+    "@deepseek-ai/cordis": "^4.0.5"
+  },
+  "engines": {
+    "dsh": ">=0.2.1-rc.3 <0.3.0"
   },
   "license": "MIT"
 }

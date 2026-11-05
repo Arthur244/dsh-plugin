@@ -65,7 +65,7 @@ dsh-a2d-workspace/
 
 - `sessionPersistence.list()` 每次扫描遍历全部持久会话，会话量极大时建议调大 `intervalMs`。
 - 已归属的会话不会被移出或改属，插件只做「补齐无归属」这一件事。
-- 未声明 `engines.dsh`，只通过 peer 依赖 `@deepseek-ai/cordis` 约束；DSH 升级后若服务名或方法签名变化，插件可能失效。
+- `engines.dsh` 声明为 `>=0.2.1-rc.3 <0.3.0`：用到的 `workspaceRegistry.list/resolveByPath/create`、`Workspace.attachSession`、`sessionPersistence.list()` 与 `session/created` 事件在该范围内已逐版本核对（`dsh-v0.2.1-rc.3` / `rc.5` / `dsh-v0.2.2-alpha.2` / `alpha.3` / `dsh-v0.2.2-rc.1` 均存在且签名一致）。DSH 若在这些服务或事件上做破坏性改动，需要同步放宽上界并重新验证。
 
 ## 卸载
 

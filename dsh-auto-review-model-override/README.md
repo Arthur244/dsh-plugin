@@ -8,6 +8,14 @@ Pin the model that reviews tool calls, and keep Auto review usable when that mod
 dsh plugin --profile desktop add "link:E:/Code/dsh-plugin/dsh-auto-review-model-override"
 ```
 
+`index.js` imports `./schema.js`, which imports `@deepseek-ai/schemastery`. A `link:` install resolves modules from the plugin's own directory, not from the profile's `node_modules`, so that package must exist here:
+
+```sh
+cd dsh-auto-review-model-override && npm install
+```
+
+Skipping this makes the Host half fail to load (`ERR_MODULE_NOT_FOUND: @deepseek-ai/schemastery`). The failure is easy to miss: the Web bundle is published from the package manifest and client entry alone (`packages/client/modules/src/index.ts:1072-1081`, which never imports the Host module), so the settings row can appear while the half that actually rewrites review routes is dead. Re-run `npm install` after pulling whenever `package.json` changes.
+
 ## Configure
 
 Settings → General shows one **Auto review model** row below the permission row: pick the provider and model used for review. Both levels of the menu come from the provider/model catalog the running process actually advertises, so no ids need typing.
