@@ -2,7 +2,9 @@ window.__ModuleLoader__.load({
   id: 'dsh-auto-review-model-override',
   factory: (require) => {
     const React = require('react')
-    const { Menu, IconCheckOutlineRegular } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const {
+      IconCheckOutlineRegular, IconChevronDownOutlineRegular, Menu,
+    } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
 
     /** Plugin config namespace (equals the Loader entry id). */
@@ -41,64 +43,162 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * The selected-row marker: a brand-colored check.
+     * The selected-row marker: the Menu's own trailing check.
      *
-     * Submenu rows cannot use the Menu's own `selectedId` — it only marks
-     * top-level entries (`Menu.tsx:488`), and the model being selected lives
-     * one level down. So the marker is drawn as the row's leading icon, which
-     * the Menu renders for any entry, including submenu rows (`Menu.tsx:486`
-     * and `:504`). `IconProps` accepts only `size` and `className` (icons/props.ts),
-     * so the brand color wraps the icon rather than being passed to it.
+     * The marker is deliberately *trailing*. A submenu row's `icon` slot is
+     * the leading one (`Menu.tsx:502`), so putting the check there would indent
+     * the selected row's text and break the left edge every other row shares.
+     * Drawing it after the label keeps all labels flush left, which is also how
+     * the Menu places its own check on top-level rows (`Menu.tsx:488`,
+     * figma .Menu_cell); it takes the same `--dsw-alias-label-primary` color
+     * (`Menu.module.css:217-219`).
      * @returns the icon element.
      */
     function Check() {
-      return h('span', { style: { display: 'inline-flex', color: styles.markColor.color } },
-        h(IconCheckOutlineRegular, { size: 14 }))
+      return h('span', { 'data-arvo': 'check' }, h(IconCheckOutlineRegular, { size: 14 }))
     }
 
     /**
-     * A menu label that carries the check when its row is the current choice.
+     * A menu label that carries the check at its trailing edge when selected.
      *
-     * Uses font weight and color in addition to the icon, so the selection
-     * survives colorblindness and low-contrast themes.
+     * Mirrors the Menu's own selected cell (`Menu.module.css:217-219`): one
+     * trailing check, no other emphasis. The label grows to the row's full
+     * width so the check lands on the right edge, and the text keeps its own
+     * ellipsis instead of being clipped by the row.
      * @param text - the visible name.
      * @param selected - whether this row is the current selection.
      * @returns the label node.
      */
     function SelectedLabel(text, selected) {
-      return selected
-        ? h('span', { style: { fontWeight: 600, color: styles.markColor.color } }, text)
-        : text
+      if (!selected) return text
+      return h('span', { 'data-arvo': 'mark' },
+        h('span', { 'data-arvo': 'mark-text' }, text),
+        Check())
     }
 
-    /** Minimal inline styles so the row needs no CSS module pipeline. */
-    const styles = {
-      markColor: { color: 'var(--dsw-alias-brand-primary, #4d6bfe)' },
-      row: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '16px',
-        padding: '12px 0',
-      },
-      text: { display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 },
-      title: { fontSize: '14px' },
-      description: { fontSize: '12px', opacity: 0.65 },
-      value: { fontSize: '13px', opacity: 0.7 },
-      selector: {
-        font: 'inherit',
-        fontSize: '13px',
-        padding: '6px 14px',
-        borderRadius: '10px',
-        border: '1px solid var(--dsh-border, rgba(128,128,128,.35))',
-        background: 'var(--dsh-surface, transparent)',
-        color: 'inherit',
-        cursor: 'pointer',
-        maxWidth: '260px',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        whiteSpace: 'nowrap',
-      },
+    /**
+     * Row stylesheet.
+     *
+     * Copy of the shipped `PermissionRow` / `LanguageRow` chrome
+     * (`ui-permission-presets/src/client/PermissionRow.module.css`,
+     * `locale/src/client/LanguageRow.module.css`): the same 16px vertical
+     * rhythm, the same `0.5px` `--dsw-alias-border-l2` hairline that every
+     * General-section row draws, and the same 36px selector pill with a
+     * trailing chevron. Real CSS rather than inline styles because the pill
+     * needs `:hover`, which an inline `style` object cannot express.
+     * Selectors are scoped by the `data-arvo` attribute only, so nothing here
+     * can leak into the shipped rows.
+     */
+    const ROW_CSS = `
+[data-arvo='row'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 0;
+  border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+[data-arvo='text'] {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-right: 48px;
+}
+@media (max-width: 767px) {
+  html:not([data-windows-titlebar]):not([data-platform='darwin']) [data-arvo='text'] {
+    padding-right: 16px;
+  }
+}
+[data-arvo='title'] {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+}
+[data-arvo='desc'] {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-arvo='value'] {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+[data-arvo='selector'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 36px;
+  max-width: 320px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-module-platform);
+  font: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+@media (hover: hover) {
+  [data-arvo='selector']:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+[data-arvo='selector']:disabled {
+  cursor: default;
+}
+[data-arvo='selector-label'] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-arvo='chevron'] {
+  flex: none;
+}
+[data-arvo='mark'] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+[data-arvo='mark-text'] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-arvo='check'] {
+  display: inline-flex;
+  flex: none;
+  color: var(--dsw-alias-label-primary);
+}
+`
+
+    /**
+     * Mount the row stylesheet once per document.
+     *
+     * Tagged with `data-plugin` the way the shipped theme sheets are
+     * (`ui-theme/src/client/styles.ts:57-58`), so it is identifiable in devtools
+     * and removed with the plugin.
+     * @returns the teardown.
+     */
+    function mountStyles() {
+      const tag = document.createElement('style')
+      tag.dataset.plugin = 'dsh-auto-review-model-override'
+      tag.dataset.pluginCss = 'dsh-auto-review-model-override/row.css'
+      tag.textContent = ROW_CSS
+      document.head.appendChild(tag)
+      return () => { tag.remove() }
     }
 
     /**
@@ -287,40 +387,44 @@ window.__ModuleLoader__.load({
         setOpen(true)
       }
 
-      const title = h('div', { style: styles.text },
-        h('div', { style: styles.title }, t('title')),
-        h('div', { style: styles.description }, t('description')))
+      const title = h('div', { 'data-arvo': 'text' },
+        h('div', { 'data-arvo': 'title' }, t('title')),
+        h('div', { 'data-arvo': 'desc' }, t('description')))
 
       if (snapshot.status === 'idle' || snapshot.status === 'loading') {
-        return h('div', { style: styles.row }, title,
-          h('div', { style: styles.value }, t('loading')))
+        return h('div', { 'data-arvo': 'row' }, title,
+          h('div', { 'data-arvo': 'value' }, t('loading')))
       }
       if (snapshot.status === 'unavailable') {
-        return h('div', { style: styles.row }, title,
-          h('div', { style: styles.value }, t('unavailable')))
+        return h('div', { 'data-arvo': 'row' }, title,
+          h('div', { 'data-arvo': 'value' }, t('unavailable')))
       }
 
       const saving = snapshot.status === 'saving'
       const groups = snapshot.groups
       const selectedProvider = groups.find((group) => group.id === snapshot.provider)
       const selectedModel = selectedProvider?.models?.find((entry) => entry.id === snapshot.model)
-      const label = snapshot.provider === ''
+      // A half-filled pair overrides nothing: the Host requires both fields
+      // (`index.js:241`), so it must not read as a finished selection here.
+      const pinned = snapshot.provider !== '' && snapshot.model !== ''
+      const label = !pinned
         ? t('unset')
-        : snapshot.model === ''
-          ? snapshot.provider
-          : `${selectedProvider?.name ?? snapshot.provider} / ${selectedModel?.name ?? snapshot.model}`
+        : `${selectedProvider?.name ?? snapshot.provider} / ${selectedModel?.name ?? snapshot.model}`
 
-      // Level 1: one row per provider, each opening a model submenu.
+      // Level 1 marks the current route: `__unset` while nothing is pinned,
+      // otherwise the provider owning the configured model. The Menu draws
+      // that check itself, last in the row, from `selectedId` — the same
+      // trailing position and color as any shipped menu (`Menu.tsx:488`,
+      // `Menu.module.css:217-219`). Level 2 marks the model with the same
+      // shape; a submenu row cannot use `selectedId` (the Menu only consults
+      // it for top-level entries), so SelectedLabel draws it.
       const items = groups.length === 0
         ? [{ id: '__empty', label: t('noProviders'), disabled: true }]
         : [
-            { id: '__unset', label: t('unset'), icon: snapshot.provider === '' ? Check() : undefined },
+            { id: '__unset', label: t('unset') },
             ...groups.map((group) => ({
               id: `provider:${group.id}`,
-              // A provider is "current" only when it is both the configured
-              // route and has a model picked; otherwise the trailing check
-              // would claim a complete selection that does not exist yet.
-              label: SelectedLabel(group.name, group.id === snapshot.provider && snapshot.model !== ''),
+              label: group.name,
               submenu: (group.models ?? []).length === 0
                 ? [{ id: '__nomodels', label: t('noModels'), disabled: true }]
                 : (group.models ?? []).map((entry) => ({
@@ -329,12 +433,11 @@ window.__ModuleLoader__.load({
                       entry.name,
                       group.id === snapshot.provider && entry.id === snapshot.model,
                     ),
-                    icon: group.id === snapshot.provider && entry.id === snapshot.model
-                      ? Check()
-                      : undefined,
                   })),
             })),
           ]
+
+      const selectedId = pinned ? `provider:${snapshot.provider}` : '__unset'
 
       const onSelect = (id) => {
         if (id === '__empty' || id === '__nomodels') return
@@ -351,7 +454,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      return h('div', { style: styles.row }, title,
+      return h('div', { 'data-arvo': 'row' }, title,
         h(Menu, {
           open,
           onClose: () => { setOpen(false) },
@@ -359,16 +462,18 @@ window.__ModuleLoader__.load({
           portal: true,
           minWidthFromAnchor: true,
           items,
-          selectedId: snapshot.provider === '' ? '__unset' : undefined,
+          selectedId,
           onSelect,
           anchor: h('button', {
             type: 'button',
-            style: styles.selector,
+            'data-arvo': 'selector',
             'aria-haspopup': 'menu',
             'aria-expanded': open,
             disabled: saving || !snapshot.writable,
             onClick: () => { open ? setOpen(false) : openMenu() },
-          }, saving ? t('saving') : label),
+          },
+          h('span', { 'data-arvo': 'selector-label' }, saving ? t('saving') : label),
+          h('span', { 'data-arvo': 'chevron' }, h(IconChevronDownOutlineRegular, { size: 14 }))),
         }))
     }
 
@@ -379,6 +484,7 @@ window.__ModuleLoader__.load({
       inject,
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-auto-review-model-override.locale')
+        ctx.effect(() => mountStyles(), 'dsh-auto-review-model-override.styles')
 
         const controller = new Controller(ctx)
         controller.t = ctx.locale.bind(NS)
