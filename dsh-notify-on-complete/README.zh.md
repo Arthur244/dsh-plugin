@@ -14,6 +14,21 @@ DeepSeek Harness 插件：每次 dsh 运行结束时向操作系统发送桌面�
 - 会话中阻塞即时通知：模型调用 `ask_user_question` 提问、或沙箱提权/工具权限等待审批时立即弹通知提醒你回来（正文含问题文本 / 工具名与原因），可用 `onBlocked` / `onQuestion` / `onApproval` 精细控制。
 - 只通知顶层运行：子代理（subagent）会话被过滤（`header.origin === 'subagent'`），一次 CLI 运行只弹一条通知。
 
+## 兼容性
+
+当前版本 **0.4.0** 适配 **DSH 0.2.2-rc.1 及以上**（`engines.dsh: >=0.2.2-rc.1`）。0.3.0 及更早版本针对 0.1.x 时期的插件 API 编写，在 0.2.2 上**宿主半侧加载即崩**（`dsh-settings` 不再导出 `settingsNamespace` / `installSettingsSection`）。
+
+DSH 0.2.2 相对 0.3.0 所依赖的 API，改动如下，本版本已全部迁移：
+
+| 位置 | 0.1.x（旧） | 0.2.2（现） |
+| :--- | :--- | :--- |
+| 设置命名空间 | `settingsNamespace('notify-on-complete')` 显式注册 | **命名空间即 profile 条目 id**；导出 `Config` schema 并在字段上标 `.volatile()` 即自动被 `SettingsForms.describe()` 列出 |
+| 设置读写接线 | `installSettingsSection(ctx, ns, schema, entry, hooks)` | 无此函数；改为从 volatile 引用（`config.enabled.get()` 等）按事件现读，Loader 在每次提交写入时原地替换 |
+| 设置服务类 | `SettingsProvider` | `SettingsForms`（默认导出），方法 `describe()` / `mutate()` / `update()` / `replace()` |
+| 会话日志读取 | `session.events` 数组 | **属性已移除**；改用 `session.snapshotEvents()`（返回冻结数组，下次 append 前保持同一引用） |
+| 浏览器设置卡片槽位 | `settings.plugin.item`（已退役） | `plugins.row.config`，键为 `<包名>#<行 id>`，即 `dsh-notify-on-complete#notify-on-complete` |
+| 卡片数据通道 | 插件自建 JSON 路由（因设置 API 有白名单） | 官方 `settings` Remote 命名空间（`ctx.remote.settings`），**无白名单限制**；页面通过 owner props `form` 拿到值与写操作 |
+
 ## 工作原理
 
 插件监听两个事件，协同判定"一次运行结束"：
@@ -33,7 +48,8 @@ DeepSeek Harness 插件：每次 dsh 运行结束时向操作系统发送桌面�
 
 ## 环境要求
 
-- Node.js ^22（与 DeepSeek Harness 一致）
+- Node.js >= 24.9.0（与 DeepSeek Harness 0.2.2 一致）
+- DSH >= 0.2.2-rc.1
 - 已安装的 dsh CLI（任意版本，插件通过 Cordis 事件注册，不依赖 CLI 特定版本）
 - peer 依赖 `@deepseek-ai/cordis@^4.0.1`（由 dsh CLI 自身提供，安装时 pnpm 会自动解析）
 
@@ -134,7 +150,7 @@ grep dsh-notify ~/.dsh/profiles/web/package.json
 
 ## 设置面板（Web GUI）
 
-打开 **dsh web → 设置 → 插件 → 配置**，展开 **运行完成通知** 卡片即可可视化配置，**无需手动编辑 `cordis.patch.yml`**：
+打开 **插件页 → dsh-notify-on-complete → notify-on-complete 行 → 配置**（DSH 0.2.2 起，插件配置集中在插件页；设置页只保留内置插件清单）即可可视化配置，**无需手动编辑 `cordis.patch.yml`**：
 
 - **enabled / title / sound / onBlocked / onQuestion / onApproval** —— 与配置文件相同的开关。
 - **sounds** —— 每档事件音色（macOS 音色名如 Glass / Sosumi / Ping / Funk，或 `default`）：完成、失败、提问/审批三档可分别更换。macOS 上 `default` 表示**不响铃**（可当作单档静音）；Windows 与 Linux 会把 `default` 映射为各自的平台默认提示音。
@@ -142,7 +158,7 @@ grep dsh-notify ~/.dsh/profiles/web/package.json
 
 面板值优先于 profile 的 `cordis.patch.yml`；没动过的字段回退到配置文件，再到默认值。无设置服务的场景（如 CLI 一次性运行）按配置文件工作，行为不变。
 
-> 设置卡片由插件的浏览器端（client half，`lib/client.js`）渲染，数据经插件自带的 JSON 路由 `GET/POST /notify-on-complete/api/config` 读写（harness 的设置 API 只对白名单命名空间开放，第三方插件需自带路由）。仅在 web profile 中生效。升级后需**重启 dsh web 进程**（见上文"重启生效"）。
+> 设置页面由插件的浏览器端（client half，`lib/client.js`）渲染，注册在 **插件页 → 本包 → notify-on-complete 行 → 配置**（槽位 `plugins.row.config`）。读写走官方 `settings` Remote 命名空间，插件不自建路由；插件另保留 `GET /notify-on-complete/api/config` 仅作诊断，写请求返回 405。仅在 web profile 中生效。升级后需**重启 dsh web 进程**（见上文"重启生效"）。
 
 ## 配置
 
@@ -229,7 +245,7 @@ dsh --profile web --dump-config | grep -n -A 10 notify-on-complete
 |---|---|---|
 | macOS | `osascript -e 'display notification …'` | 原生通知中心通知，带系统提示音（`sound name "Glass"`） |
 | Linux | `notify-send` | 缺失时自动回退 `kdialog --passivepopup`；提示音走 `canberra-gtk-play`（缺失时回退 `paplay`） |
-| Windows | PowerShell `WScript.Shell.Popup` | 无需额外模块，5 秒自动关闭，带 .NET SystemSounds 提示音 |
+| Windows | PowerShell + WinRT `ToastNotification` | 右下角原生 toast（进入操作中心），带 `ms-winsoundevent` 提示音；toast 归属显示为「Windows PowerShell」（DSH 未注册自己的 AppUserModelID，插件侧无法注册） |
 
 > macOS 首次使用可能需要给终端应用授予"通知"权限（系统设置 → 通知）。
 

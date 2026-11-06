@@ -6,6 +6,23 @@ import { approvalDetail, blockedQuestionText, sessionTitle } from './notify.js'
 import type { AgentStatusPayload, ApprovalAskedData, Session, SessionEvent, ToolCallData } from './types.js'
 
 /**
+ * Read a session's committed event log for the title lookup.
+ *
+ * DSH 0.2.2's `Session` exposes no `events` property — the log is read through
+ * `snapshotEvents()`, which returns a frozen array that stays stable across
+ * later appends. A session object handed to this plugin always carries it; the
+ * optional call keeps a structurally-narrowed session (a test double, or a
+ * future reader that only carries `header`) from throwing.
+ * @param session - the session whose latest title is wanted, if one is present.
+ * @returns the event log, or an empty list when the session carries none.
+ */
+function sessionEvents(session: Session | undefined): readonly SessionEvent[] {
+  if (session === undefined) return []
+  const read = (session as { snapshotEvents?: () => readonly SessionEvent[] }).snapshotEvents
+  return typeof read === 'function' ? read.call(session) : []
+}
+
+/**
  * Tracks root-session turn endings and reports the run's final result exactly
  * once, when the agent returns to idle.
  *
@@ -50,7 +67,7 @@ export class RunEndNotifier {
     const kind = this.reasons.get(sessionId)
     if (kind === undefined) return // no turn ended in this activity — nothing to report
     this.reasons.delete(sessionId)
-    this.deps.notify(kind, sessionId, sessionTitle(agent?.session?.events ?? []))
+    this.deps.notify(kind, sessionId, sessionTitle(sessionEvents(agent?.session)))
   }
 }
 
@@ -82,12 +99,12 @@ export class BlockedNotifier {
       const data = event.data as ToolCallData | undefined
       if (data?.name !== 'ask_user_question') return
       const detail = typeof data.arguments === 'string' ? blockedQuestionText(data.arguments) : ''
-      this.deps.notify('question', detail, session.header.id, sessionTitle(session.events ?? []))
+      this.deps.notify('question', detail, session.header.id, sessionTitle(sessionEvents(session)))
     } else if (event.type === 'approval/asked' && this.deps.onApproval) {
       const data = event.data as ApprovalAskedData | undefined
       const toolName = typeof data?.toolName === 'string' ? data.toolName : ''
       const reason = typeof data?.reason === 'string' ? data.reason : ''
-      this.deps.notify('approval', approvalDetail(toolName, reason), session.header.id, sessionTitle(session.events ?? []))
+      this.deps.notify('approval', approvalDetail(toolName, reason), session.header.id, sessionTitle(sessionEvents(session)))
     }
   }
 }

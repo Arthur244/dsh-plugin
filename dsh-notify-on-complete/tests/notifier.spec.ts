@@ -15,7 +15,7 @@ function subagentSession(id: string): Session {
 }
 
 function sessionWithTitle(id: string, title: string): Session {
-  return { header: { id }, events: [{ type: 'session/title', data: { title } }] }
+  return { header: { id }, snapshotEvents: () => [{ type: 'session/title', data: { title } }] }
 }
 
 function turnEnd(kind: string): SessionEvent {

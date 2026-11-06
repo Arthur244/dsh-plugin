@@ -85,13 +85,34 @@ describe('buildCommands', () => {
     ])
   })
 
-  it('builds the Windows PowerShell popup and escapes single quotes', () => {
-    const [cmd] = buildCommands('win32', 'T', "B'x")
-    const joined = cmd.args.join(' ')
+  it('builds a WinRT toast through an encoded PowerShell command', () => {
+    const [cmd] = buildCommands('win32', 'T', 'B')
     expect(cmd.command).toBe('powershell')
-    expect(joined).toContain("$ws.Popup('B''x', 5, 'T', 64)")
-    expect(joined).toContain('[System.Media.SystemSounds]::Asterisk.Play()')
-    expect(joined.indexOf('[System.Media.SystemSounds]::Asterisk.Play()')).toBeLessThan(joined.indexOf('$ws.Popup('))
+    // The script rides `-EncodedCommand` (base64 UTF-16LE) so no ANSI code page
+    // parses it: passing it through `-Command` mangled non-ASCII text.
+    expect(cmd.args).toContain('-EncodedCommand')
+    const encoded = cmd.args[cmd.args.length - 1]!
+    expect(encoded).toMatch(/^[A-Za-z0-9+/]+=*$/)
+    const script = Buffer.from(encoded, 'base64').toString('utf16le')
+    expect(script).toContain('Windows.UI.Notifications.ToastNotificationManager')
+    expect(script).toContain('<toast>')
+    // A modal WScript popup is NOT the platform notification.
+    expect(script).not.toContain('WScript.Shell')
+    expect(script).not.toContain('Popup(')
+  })
+
+  it('decodes the toast text back to the original strings', () => {
+    const [cmd] = buildCommands('win32', '标题', '正文')
+    const script = Buffer.from(cmd.args[cmd.args.length - 1]!, 'base64').toString('utf16le')
+    expect(script).toContain('<text>标题</text>')
+    expect(script).toContain('<text>正文</text>')
+  })
+
+  it('escapes XML metacharacters in the toast payload', () => {
+    const [cmd] = buildCommands('win32', 'A&B', '<tag> "q"')
+    const script = Buffer.from(cmd.args[cmd.args.length - 1]!, 'base64').toString('utf16le')
+    expect(script).toContain('<text>A&amp;B</text>')
+    expect(script).toContain('<text>&lt;tag&gt; &quot;q&quot;</text>')
   })
 
   it('throws on unsupported platforms', () => {
@@ -168,14 +189,20 @@ describe('buildCommands with differentiated sound', () => {
     expect(cmd.args[1]).toBe('display notification "B" with title "T" sound name "Glass"')
   })
 
-  it('maps macOS sound names to Windows SystemSounds', () => {
-    const [cmd] = buildCommands('win32', 'T', 'B', 'Sosumi')
-    expect(cmd.args.join(' ')).toContain('[System.Media.SystemSounds]::Exclamation.Play()')
+  it('maps macOS sound names to Windows toast audio events', () => {
+    const scriptOf = (sound: string): string => {
+      const [cmd] = buildCommands('win32', 'T', 'B', sound)
+      return Buffer.from(cmd.args[cmd.args.length - 1]!, 'base64').toString('utf16le')
+    }
+    expect(scriptOf('Sosumi')).toContain('ms-winsoundevent:Notification.Error')
+    expect(scriptOf('Ping')).toContain('ms-winsoundevent:Notification.Reminder')
+    expect(scriptOf('Glass')).toContain('ms-winsoundevent:Notification.Default')
   })
 
-  it('maps unknown sound names to the Windows Asterisk fallback', () => {
+  it('maps unknown sound names to the Windows default toast audio', () => {
     const [cmd] = buildCommands('win32', 'T', 'B', 'Frog')
-    expect(cmd.args.join(' ')).toContain('[System.Media.SystemSounds]::Asterisk.Play()')
+    const script = Buffer.from(cmd.args[cmd.args.length - 1]!, 'base64').toString('utf16le')
+    expect(script).toContain('ms-winsoundevent:Notification.Default')
   })
 
   it('omits the sound name on macOS when withSound is false', () => {
@@ -183,11 +210,11 @@ describe('buildCommands with differentiated sound', () => {
     expect(cmd.args[1]).toBe('display notification "B" with title "T"')
   })
 
-  it('keeps the popup but drops the SystemSounds chime on Windows when withSound is false', () => {
+  it('emits a silent toast on Windows when withSound is false', () => {
     const [cmd] = buildCommands('win32', 'T', 'B', 'Glass', false)
-    const joined = cmd.args.join(' ')
-    expect(joined).toContain('$ws.Popup(')
-    expect(joined).not.toContain('.Play()')
+    const script = Buffer.from(cmd.args[cmd.args.length - 1]!, 'base64').toString('utf16le')
+    expect(script).toContain('<audio silent="true"/>')
+    expect(script).not.toContain('ms-winsoundevent')
   })
 })
 
@@ -208,9 +235,9 @@ describe('buildSoundCommands with differentiated sound', () => {
 })
 
 describe('spawnNotify', () => {
-  it('spawns the first candidate detached and unrefs the child', () => {
+  it('spawns the first candidate hidden and unrefs the child', () => {
     const child = spawnNotify([{ command: 'notify-send', args: ['T', 'B'] }])
-    expect(mockedSpawn).toHaveBeenCalledWith('notify-send', ['T', 'B'], { detached: true, stdio: 'ignore' })
+    expect(mockedSpawn).toHaveBeenCalledWith('notify-send', ['T', 'B'], { stdio: 'ignore', windowsHide: true })
     expect(child?.unref).toHaveBeenCalled()
   })
 
@@ -221,7 +248,7 @@ describe('spawnNotify', () => {
     ])
     mockChild.children[0]!.errorHandlers[0]!(Object.assign(new Error('missing'), { code: 'ENOENT' }))
     expect(mockedSpawn).toHaveBeenCalledTimes(2)
-    expect(mockedSpawn).toHaveBeenLastCalledWith('kdialog', ['--passivepopup', 'B', 'T', '5'], { detached: true, stdio: 'ignore' })
+    expect(mockedSpawn).toHaveBeenLastCalledWith('kdialog', ['--passivepopup', 'B', 'T', '5'], { stdio: 'ignore', windowsHide: true })
   })
 
   it('does not retry on a non-ENOENT error', () => {

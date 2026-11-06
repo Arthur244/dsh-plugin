@@ -48,8 +48,15 @@ export interface SessionHeader {
 /** The session object delivered to `session/event` listeners. */
 export interface Session {
   header: SessionHeader
-  /** The session's full event log, in order; read to find the latest title. */
-  events?: readonly SessionEvent[]
+  /**
+   * The session's committed event log.
+   *
+   * DSH 0.2.2 removed the `events` array property; the log is read through
+   * `snapshotEvents()`, which returns a frozen array reused until the next
+   * append. Declared optional so a structural test double can carry `header`
+   * alone.
+   */
+  snapshotEvents?: (fromSeq?: number, toSeqExclusive?: number) => readonly SessionEvent[]
 }
 
 /**

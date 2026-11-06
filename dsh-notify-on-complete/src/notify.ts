@@ -95,18 +95,113 @@ function escapeAppleScript(value: string): string {
     .replace(/\t/g, '\\t')
 }
 
-/** Escape a string for a single-quoted PowerShell literal. */
+/** Escape text for inclusion in a PowerShell single-quoted literal. */
 function escapePowerShell(value: string): string {
   return value.replace(/'/g, "''")
+}
+
+/** Escape text for inclusion in an XML text node (toast payloads are XML). */
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+/**
+ * AppUserModelIDs a toast may be attributed to, most preferred first.
+ *
+ * Windows renders a toast only for an application id that is registered as
+ * toast-capable. An unregistered id is not an error: `Show()` succeeds and
+ * nothing appears. That is why the DeepSeek Harness id (`com.deepseek.dsh`)
+ * is NOT used — it reaches the Start menu but registers no
+ * `AppUserModelId` key, so a toast attributed to it is silently dropped.
+ *
+ * Windows PowerShell's id is the first candidate because the system ships a
+ * registration for it; it renders with the PowerShell name. The application's
+ * own id follows for a machine where DSH registers itself later.
+ */
+const WINDOWS_AUMIDS: readonly string[] = [
+  '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe',
+  'com.deepseek.dsh',
+]
+
+/** Windows toast audio sources, one per macOS sound name the plugin offers. */
+const WINDOWS_TOAST_SOUNDS: Record<string, string> = {
+  Glass: 'ms-winsoundevent:Notification.Default',
+  Sosumi: 'ms-winsoundevent:Notification.Error',
+  Ping: 'ms-winsoundevent:Notification.Reminder',
+}
+
+/**
+ * Encode a PowerShell script as a `-EncodedCommand` argument.
+ *
+ * The script is passed as base64 UTF-16LE, so no code page is involved when
+ * Windows PowerShell 5.1 parses it. Passing the same text through `-Command`
+ * sends it as the process's ANSI code page, which mangles every non-ASCII
+ * character (Chinese notification text arrived as mojibake).
+ * @param script - the PowerShell source.
+ * @returns the base64 argument value.
+ */
+function encodePowerShell(script: string): string {
+  return Buffer.from(script, 'utf16le').toString('base64')
+}
+
+/**
+ * Build the WinRT toast script for Windows.
+ *
+ * `WScript.Shell.Popup` — what this plugin used before — opens a modal dialog
+ * box owned by the script host: it blocks, it ignores Focus Assist, and it is
+ * not the notification the platform shows. A toast through
+ * `Windows.UI.Notifications` is the native action-center notification.
+ * @param title - the notification title, escaped here.
+ * @param body - the notification body, escaped here.
+ * @param soundName - resolved macOS sound name, or `'default'`.
+ * @param withSound - whether the toast plays a chime.
+ * @returns the PowerShell script.
+ */
+function windowsToastScript(title: string, body: string, soundName: string, withSound: boolean): string {
+  const audio = withSound
+    ? `<audio src="${WINDOWS_TOAST_SOUNDS[soundName] ?? WINDOWS_TOAST_SOUNDS['Glass']!}"/>`
+    : '<audio silent="true"/>'
+  const toast = `<toast><visual><binding template="ToastGeneric"><text>${escapeXml(title)}</text><text>${escapeXml(body)}</text></binding></visual>${audio}</toast>`
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    '[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null',
+    '[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null',
+    '$xml = New-Object Windows.Data.Xml.Dom.XmlDocument',
+    `$xml.LoadXml('${toast.replace(/'/g, "''")}')`,
+    '$toast = New-Object Windows.UI.Notifications.ToastNotification $xml',
+    // Try each candidate id until one is registered as toast-capable. A
+    // registration under `AppUserModelId` is what makes `Show()` actually
+    // render; without one it still returns without an error.
+    `$aumids = @(${WINDOWS_AUMIDS.map(id => `'${id.replace(/'/g, "''")}'`).join(', ')})`,
+    '$shown = $false',
+    'foreach ($candidate in $aumids) {',
+    '  try {',
+    '    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($candidate).Show($toast)',
+    '    $shown = $true',
+    '    break',
+    '  } catch { }',
+    '}',
+    // Nothing registered: attribute to the first candidate anyway. `Show()`
+    // accepts it, and a caller that checks for a rendered toast has no better
+    // option from a plugin process.
+    'if (-not $shown) {',
+    `  [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('${WINDOWS_AUMIDS[0]!.replace(/'/g, "''")}').Show($toast)`,
+    '}',
+  ].join('\n')
 }
 
 /**
  * Build the candidate notification commands for a platform, most preferred
  * first. macOS uses osascript; Linux prefers notify-send and falls back to
- * kdialog; Windows uses a PowerShell WScript.Shell popup. macOS embeds the
- * sound name; Windows maps it to a .NET SystemSounds member. `withSound:
- * false` silences both: macOS omits the `sound name` part entirely and
- * Windows skips the `SystemSounds` prefix, leaving the popup only.
+ * kdialog; Windows shows a native WinRT toast. macOS embeds the sound name in
+ * the script; Windows maps it to a toast audio event. `withSound: false`
+ * silences both: macOS omits the `sound name` part and Windows emits a silent
+ * toast.
  * @param platform - `process.platform` value.
  * @param title - the notification title, already final.
  * @param body - the notification body, already final.
@@ -130,11 +225,9 @@ export function buildCommands(platform: NodeJS.Platform, title: string, body: st
         { command: 'kdialog', args: ['--passivepopup', body, title, '5'] },
       ]
     case 'win32': {
-      const windowsSound = { Glass: 'Asterisk', Sosumi: 'Exclamation', Ping: 'Question' }[soundName] ?? 'Asterisk'
-      const soundPrefix = withSound ? `[System.Media.SystemSounds]::${windowsSound}.Play(); ` : ''
       return [{
         command: 'powershell',
-        args: ['-NoProfile', '-Command', `${soundPrefix}$ws = New-Object -ComObject WScript.Shell; $ws.Popup('${escapePowerShell(body)}', 5, '${escapePowerShell(title)}', 64)`],
+        args: ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encodePowerShell(windowsToastScript(title, body, soundName, withSound))],
       }]
     }
     default:
@@ -175,17 +268,22 @@ export function buildSoundCommands(platform: NodeJS.Platform, soundName = 'Glass
 }
 
 /**
- * Fire-and-forget a notification: spawn the first candidate detached and
- * unref'd; on ENOENT retry the next candidate (notify-send → kdialog). Any
- * other failure is swallowed — a missing notifier must never break the run it
- * reports on.
+ * Fire-and-forget a notification: spawn the first candidate without a console
+ * window and unref'd; on ENOENT retry the next candidate (notify-send →
+ * kdialog). Any other failure is swallowed — a missing notifier must never
+ * break the run it reports on.
  * @param commands - ordered candidate commands from {@link buildCommands}.
  * @returns the spawned child, or undefined when no candidate remains.
  */
 export function spawnNotify(commands: NotifyCommand[]): ReturnType<typeof spawn> | undefined {
   const [first, ...rest] = commands
   if (!first) return undefined
-  const child = spawn(first.command, first.args, { detached: true, stdio: 'ignore' })
+  // `detached: true` is deliberately not used. On Windows a detached PowerShell
+  // never runs the script it was handed: the spawn succeeds, a pid is returned,
+  // and nothing appears — which silently swallowed every Windows notification.
+  // `windowsHide` suppresses the console window instead, and `unref()` still
+  // lets the harness exit without waiting for the notifier.
+  const child = spawn(first.command, first.args, { stdio: 'ignore', windowsHide: true })
   child.once('error', (error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT' && rest.length > 0) spawnNotify(rest)
   })

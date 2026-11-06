@@ -24,6 +24,21 @@ DeepSeek Harness（`dsh`）桌面通知插件：运行结束时向系统发送�
 
 完整中文文档见 [README.zh.md](README.zh.md)。
 
+## Compatibility
+
+Version **0.4.0** targets **DSH 0.2.2-rc.1 and later** (`engines.dsh: >=0.2.2-rc.1`). Versions up to 0.3.0 were written against the 0.1.x plugin API and **crash on load from the host half** on 0.2.2 (`dsh-settings` no longer exports `settingsNamespace` / `installSettingsSection`).
+
+What changed between the API 0.3.0 relied on and 0.2.2, all migrated here:
+
+| Surface | 0.1.x (old) | 0.2.2 (current) |
+| :--- | :--- | :--- |
+| Settings namespace | explicit `settingsNamespace('notify-on-complete')` registration | **the namespace IS the profile entry id**; exporting a `Config` schema whose fields carry `.volatile()` makes `SettingsForms.describe()` list the entry |
+| Settings wiring | `installSettingsSection(ctx, ns, schema, entry, hooks)` | the function is gone; read the volatile references (`config.enabled.get()`, …) per event — the Loader swaps them in place on every committed write |
+| Settings service | `SettingsProvider` | `SettingsForms` (default export) with `describe()` / `mutate()` / `update()` / `replace()` |
+| Session log read | the `session.events` array | **that property is gone**; use `session.snapshotEvents()` (a frozen array, stable until the next append) |
+| Browser card slot | `settings.plugin.item` (retired) | `plugins.row.config`, keyed `<package name>#<row id>`, i.e. `dsh-notify-on-complete#notify-on-complete` |
+| Card data channel | the plugin's own JSON route (the settings API was allowlist-only) | the official `settings` Remote namespace (`ctx.remote.settings`), **no allowlist**; the page receives values and writes as `form` owner props |
+
 ## How it works
 
 The plugin listens to two events to decide when "a run has ended":
@@ -144,7 +159,7 @@ grep dsh-notify ~/.dsh/profiles/web/package.json
 
 ## Settings Panel (Web GUI)
 
-Open **dsh web → Settings → Plugins → Configurable** and expand the **notify-on-complete** card. Every option below is editable in the UI — no `cordis.patch.yml` edits needed:
+Open **Plugins → dsh-notify-on-complete → the notify-on-complete row → Configure** (since DSH 0.2.2 plugin configuration lives on the Plugins page; Settings keeps only the built-in plugin inventory). Every option below is editable in the UI — no `cordis.patch.yml` edits needed:
 
 - **enabled / title / sound / onBlocked / onQuestion / onApproval** — the same switches as the config file.
 - **sounds** — per-tier sound names (macOS sound names like Glass / Sosumi / Ping / Funk, or `default`): completion, failure, and attention (question/approval) chimes. On macOS `default` means **no chime** — use it as a per-tier mute; Windows and Linux map `default` to their platform default sound.
@@ -152,7 +167,7 @@ Open **dsh web → Settings → Plugins → Configurable** and expand the **noti
 
 Values take precedence over the profile's `cordis.patch.yml` config; fields you never touch fall back to the config file, then to defaults. Profiles without a settings service (e.g. CLI one-shot) simply use the config file as before.
 
-> The settings card is rendered by the plugin's browser half (`lib/client.js`) and reads/writes through the plugin's own JSON route (`GET/POST /notify-on-complete/api/config`) — the harness's settings API serves only an allowlist of namespaces to the web client, so third-party plugins expose their own route. It only takes effect in a web profile. After upgrading to a version that ships the card, **restart the dsh web process** so the browser half is loaded (see "Restart" above).
+> The settings page is rendered by the plugin's browser half (`lib/client.js`) and registers in **Plugins → this package → the notify-on-complete row → Configure** (slot `plugins.row.config`). Reads and writes go through the official `settings` Remote namespace — the plugin opens no route of its own. A `GET /notify-on-complete/api/config` route remains for diagnostics only; writes answer 405. It only takes effect in a web profile. After upgrading, **restart the dsh web process** (see "Restart" above).
 
 ## Configuration
 
@@ -239,7 +254,7 @@ If the output shows your `config:` values, it's applied.
 |---|---|---|
 | macOS | `osascript -e 'display notification …'` | native Notification Center, with system sound (`sound name "Glass"`) |
 | Linux | `notify-send` | falls back to `kdialog --passivepopup` when missing; sound via `canberra-gtk-play` (falls back to `paplay`) |
-| Windows | PowerShell `WScript.Shell.Popup` | no extra modules, auto-closes after 5 s, with .NET `SystemSounds` |
+| Windows | PowerShell + WinRT `ToastNotification` | native bottom-right toast (lands in Action Center) with `ms-winsoundevent` audio; attributed to "Windows PowerShell" (DSH registers no AppUserModelID of its own, and a plugin cannot register one) |
 
 > On macOS you may need to grant the terminal app notification permission (System Settings → Notifications).
 

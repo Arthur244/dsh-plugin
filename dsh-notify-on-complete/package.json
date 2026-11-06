@@ -1,6 +1,6 @@
 {
   "name": "dsh-notify-on-complete",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Desktop notifications for DeepSeek Harness (dsh): run completion, model questions, and approval requests. Zero runtime dependencies — all peers provided by the dsh CLI.",
   "keywords": [
     "deepseek",
@@ -52,7 +52,12 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-runtime"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-renderer"
       ]
     }
   },
@@ -66,19 +71,21 @@
     "test": "vitest run"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.5",
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/schemastery": "^3.19.0"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.5",
-    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/schemastery": "^3.19.0",
     "@types/node": "^22",
     "@types/react": "^18.3.12",
     "react": "^18.3.1",
     "tsdown": "^0.22.14",
     "typescript": "^5",
     "vitest": "^3"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.1"
   }
 }

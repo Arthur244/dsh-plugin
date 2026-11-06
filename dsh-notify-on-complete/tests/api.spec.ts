@@ -4,32 +4,25 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import { createNotifyApiHandler } from '../src/api.js'
-import type { SettingsDescriptor, SettingsPathOp, SettingsProvider } from '@deepseek-ai/dsh-settings'
 
 /** One descriptor the fake settings service serves. */
-function descriptor(ns: string, overrides: Partial<SettingsDescriptor> = {}): SettingsDescriptor {
-  return {
-    ns,
-    schema: { uid: 1, refs: {} },
-    value: { enabled: true },
-    revision: 0,
-    applies: 'live',
-    secrets: [],
-    ...overrides,
-  } as SettingsDescriptor
+interface Descriptor {
+  ns: string
+  value?: unknown
+  base?: unknown
+  user?: unknown
 }
 
-/** Fake settings service capturing describe/mutate calls. */
-function fakeSettings(descriptors: SettingsDescriptor[]) {
+/** Fake settings service capturing describe calls. */
+function fakeSettings(descriptors: Descriptor[]) {
   return {
     writable: true,
     describe: vi.fn(() => descriptors),
-    mutate: vi.fn(async (_ns: string, ops: readonly SettingsPathOp[]) => { void ops }),
-  } as unknown as SettingsProvider
+  }
 }
 
 /** Minimal ctx face the handler reads. */
-function fakeCtx(settings: SettingsProvider | undefined) {
+function fakeCtx(settings: ReturnType<typeof fakeSettings> | undefined) {
   return { get: (name: string) => (name === 'settings' ? settings : undefined) } as never
 }
 
@@ -43,14 +36,9 @@ function fakeRes() {
   } as never
 }
 
-/** Build a fake IncomingMessage; a body makes it an async iterable of chunks. */
-function fakeReq(method: string, url: string, body?: unknown) {
-  const req: Record<string, unknown> = { method, url }
-  if (body !== undefined) {
-    const buffer = Buffer.from(JSON.stringify(body))
-    req[Symbol.asyncIterator] = async function* () { yield buffer }
-  }
-  return req as never
+/** Build a fake IncomingMessage. */
+function fakeReq(method: string, url: string) {
+  return { method, url } as never
 }
 
 function lastBody(res: { calls: Array<{ status?: number; body?: string }> }): { status: number; body: unknown } {
@@ -62,8 +50,8 @@ function lastBody(res: { calls: Array<{ status?: number; body?: string }> }): { 
 describe('createNotifyApiHandler', () => {
   it('serves the notify-on-complete config on GET', async () => {
     const settings = fakeSettings([
-      descriptor('notify-on-complete', { value: { sound: false }, base: { sound: true }, user: { sound: false }, revision: 3 }),
-      descriptor('shell'),
+      { ns: 'notify-on-complete', value: { sound: false }, base: { sound: true }, user: { sound: false } },
+      { ns: 'shell' },
     ])
     const handler = createNotifyApiHandler(fakeCtx(settings))
     const res = fakeRes()
@@ -80,55 +68,36 @@ describe('createNotifyApiHandler', () => {
   })
 
   it('404s when the namespace is not registered', async () => {
-    const settings = fakeSettings([descriptor('shell')])
+    const settings = fakeSettings([{ ns: 'shell' }])
     const handler = createNotifyApiHandler(fakeCtx(settings))
     const res = fakeRes()
     await handler(fakeReq('GET', '/notify-on-complete/api/config'), res)
-    const { status } = lastBody(res)
-    expect(status).toBe(404)
+    expect(lastBody(res).status).toBe(404)
   })
 
-  it('applies set and unset ops on POST', async () => {
-    const settings = fakeSettings([descriptor('notify-on-complete')])
+  it('refuses writes: they go through the settings Remote namespace', async () => {
+    // The card writes through `ctx.remote.settings`, which fences every write
+    // with the revision the editor read. A second write path here would bypass
+    // that fence, so the route answers 405 instead of mutating.
+    const settings = fakeSettings([{ ns: 'notify-on-complete' }])
     const handler = createNotifyApiHandler(fakeCtx(settings))
     const res = fakeRes()
-    await handler(fakeReq('POST', '/notify-on-complete/api/config', {
-      set: { sound: false, sounds: { completed: 'Funk', error: 'Sosumi', approval: 'Ping' } },
-      unset: ['quietHours'],
-    }), res)
-    const { status } = lastBody(res)
-    expect(status).toBe(200)
-    expect(settings.mutate).toHaveBeenCalledWith('notify-on-complete', [
-      { op: 'set', path: ['sound'], value: false },
-      { op: 'set', path: ['sounds'], value: { completed: 'Funk', error: 'Sosumi', approval: 'Ping' } },
-      { op: 'unset', path: ['quietHours'] },
-    ])
-  })
-
-  it('rejects a malformed set payload', async () => {
-    const settings = fakeSettings([descriptor('notify-on-complete')])
-    const handler = createNotifyApiHandler(fakeCtx(settings))
-    const res = fakeRes()
-    await handler(fakeReq('POST', '/notify-on-complete/api/config', { set: 'not-an-object' }), res)
-    const { status } = lastBody(res)
-    expect(status).toBe(400)
-    expect(settings.mutate).not.toHaveBeenCalled()
+    await handler(fakeReq('POST', '/notify-on-complete/api/config'), res)
+    expect(lastBody(res).status).toBe(405)
   })
 
   it('503s without a settings service', async () => {
     const handler = createNotifyApiHandler(fakeCtx(undefined))
     const res = fakeRes()
     await handler(fakeReq('GET', '/notify-on-complete/api/config'), res)
-    const { status } = lastBody(res)
-    expect(status).toBe(503)
+    expect(lastBody(res).status).toBe(503)
   })
 
   it('404s on unknown actions', async () => {
-    const settings = fakeSettings([descriptor('notify-on-complete')])
+    const settings = fakeSettings([{ ns: 'notify-on-complete' }])
     const handler = createNotifyApiHandler(fakeCtx(settings))
     const res = fakeRes()
     await handler(fakeReq('GET', '/notify-on-complete/api/other'), res)
-    const { status } = lastBody(res)
-    expect(status).toBe(404)
+    expect(lastBody(res).status).toBe(404)
   })
 })

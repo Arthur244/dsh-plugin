@@ -4,218 +4,124 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  NotifyCardController,
+  DEFAULTS,
   deepEqualJson,
+  fieldOverridden,
+  fieldValue,
   formatQuietHours,
   parseQuietHours,
+  toStored,
   type NotifySection,
-  type SettingsScopeLike,
+  type StagedMap,
 } from '../src/client/notify-settings.js'
 
-/** A fake settings scope with in-memory set/unset, publishing on every write. */
-function fakeScope(initial: {
-  value?: NotifySection
-  base?: NotifySection
-  user?: Record<string, unknown>
-  writable?: boolean
-}): SettingsScopeLike<NotifySection> & { writes: Array<{ op: 'set' | 'unset'; field: string; value?: unknown }> } {
-  let snapshot = {
-    status: 'ready' as const,
-    value: initial.value,
-    base: initial.base,
-    user: initial.user,
-    writable: initial.writable ?? true,
-  }
-  const listeners = new Set<() => void>()
-  const writes: Array<{ op: 'set' | 'unset'; field: string; value?: unknown }> = []
-  const publish = (): void => { for (const listener of [...listeners]) listener() }
-  return {
-    writes,
-    getSnapshot: () => snapshot,
-    subscribe: (listener) => { listeners.add(listener); return () => { listeners.delete(listener) } },
-    set: async (field, value) => {
-      writes.push({ op: 'set', field, value })
-      snapshot = {
-        ...snapshot,
-        value: { ...snapshot.value, [field]: value },
-        user: { ...(snapshot.user ?? {}), [field]: value },
-      }
-      publish()
-    },
-    unset: async (field) => {
-      writes.push({ op: 'unset', field })
-      const { [field]: _removed, ...user } = snapshot.user ?? {}
-      const { [field]: _value, ...value } = snapshot.value ?? {}
-      snapshot = { ...snapshot, user, value }
-      publish()
-    },
-  }
-}
-
 describe('parseQuietHours / formatQuietHours', () => {
-  it('parses comma-separated ranges, trimming and dropping empty parts', () => {
-    expect(parseQuietHours('22:00-08:00, 09:00-10:00 , , 11:00-12:00')).toEqual([
-      '22:00-08:00', '09:00-10:00', '11:00-12:00',
-    ])
+  it('splits a comma-joined draft into trimmed ranges', () => {
+    expect(parseQuietHours(' 22:00-08:00 , 12:00-13:00 ')).toEqual(['22:00-08:00', '12:00-13:00'])
   })
 
-  it('returns undefined (clear) for an empty draft', () => {
-    expect(parseQuietHours('')).toBeUndefined()
+  it('treats a blank draft as a clear', () => {
     expect(parseQuietHours('   ')).toBeUndefined()
   })
 
-  it('formats a stored array back into a comma-joined draft', () => {
-    expect(formatQuietHours(['22:00-08:00', '09:00-10:00'])).toBe('22:00-08:00, 09:00-10:00')
+  it('drops empty entries between commas', () => {
+    expect(parseQuietHours('22:00-08:00,,')).toEqual(['22:00-08:00'])
+  })
+
+  it('renders an absent array as an empty draft', () => {
     expect(formatQuietHours(undefined)).toBe('')
+    expect(formatQuietHours(['22:00-08:00'])).toBe('22:00-08:00')
   })
 })
 
 describe('deepEqualJson', () => {
-  it('compares primitives, arrays, and nested objects structurally', () => {
+  it('compares nested JSON data structurally', () => {
     expect(deepEqualJson({ a: [1, { b: 2 }] }, { a: [1, { b: 2 }] })).toBe(true)
-    expect(deepEqualJson({ a: 1 }, { a: 2 })).toBe(false)
+    expect(deepEqualJson({ a: [1, { b: 2 }] }, { a: [1, { b: 3 }] })).toBe(false)
     expect(deepEqualJson([1, 2], [1, 2, 3])).toBe(false)
     expect(deepEqualJson(null, null)).toBe(true)
-    expect(deepEqualJson({ a: 1 }, { a: 1, b: 2 })).toBe(false)
+  })
+
+  it('distinguishes objects from arrays of the same length', () => {
+    expect(deepEqualJson({}, [])).toBe(false)
   })
 })
 
-describe('NotifyCardController', () => {
-  it('renders resolved values and overridden flags from the scope', () => {
-    const scope = fakeScope({
-      base: { sound: true },
-      value: { enabled: true, sound: false, sounds: { completed: 'Glass', error: 'Sosumi', approval: 'Ping' }, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-      user: { sound: false },
-    })
-    const form = new NotifyCardController(scope)
-    const snapshot = form.getSnapshot()
-    expect(snapshot.shell.available).toBe(true)
-    expect(snapshot.shell.dirty).toBe(false)
-    expect(snapshot.sound.value).toBe(false)
-    expect(snapshot.sound.overridden).toBe(true)
-    expect(snapshot.enabled.value).toBe(true)
-    expect(snapshot.enabled.overridden).toBe(false)
-    expect(snapshot.quietHours.value).toBe('')
+describe('toStored', () => {
+  it('parses quiet hours from their text draft', () => {
+    expect(toStored('quietHours', '22:00-08:00')).toEqual(['22:00-08:00'])
+    expect(toStored('quietHours', '')).toBeUndefined()
   })
 
-  it('is unavailable while the namespace is not served', () => {
-    const scope = fakeScope({})
-    scope.getSnapshot = () => ({ status: 'unavailable' as const, value: undefined, base: undefined, user: undefined, writable: false })
-    const form = new NotifyCardController(scope)
-    expect(form.getSnapshot().shell.available).toBe(false)
+  it('passes every other field through untouched', () => {
+    expect(toStored('sound', false)).toBe(false)
+    expect(toStored('sounds', { completed: 'Funk' })).toEqual({ completed: 'Funk' })
+  })
+})
+
+describe('fieldValue', () => {
+  const noStaged: StagedMap = new Map()
+
+  it('resolves the effective value when nothing is staged', () => {
+    expect(fieldValue('title', { title: 'from host' }, noStaged, value => typeof value === 'string' ? value : 'fallback'))
+      .toBe('from host')
   })
 
-  it('stages a set, marks it overridden, and writes it on save', async () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: { completed: 'Glass', error: 'Sosumi', approval: 'Ping' }, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    form.stage('sound', false)
-    expect(form.getSnapshot().shell.dirty).toBe(true)
-    expect(form.getSnapshot().sound.value).toBe(false)
-    expect(form.getSnapshot().sound.overridden).toBe(true)
-    await form.save()
-    expect(scope.writes).toEqual([{ op: 'set', field: 'sound', value: false }])
-    expect(form.getSnapshot().shell.dirty).toBe(false)
+  it('falls back when the section carries nothing', () => {
+    expect(fieldValue('title', undefined, noStaged, value => typeof value === 'string' ? value : DEFAULTS.title))
+      .toBe(DEFAULTS.title)
   })
 
-  it('unstages an edit that equals the current section value', () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: false, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    form.stage('sound', false)
-    expect(form.getSnapshot().shell.dirty).toBe(false)
-    expect(form.getSnapshot().sound.overridden).toBe(false)
+  it('prefers a staged set over the effective value', () => {
+    const staged: StagedMap = new Map([['title', { kind: 'set' as const, value: 'draft' }]])
+    expect(fieldValue('title', { title: 'from host' }, staged, value => typeof value === 'string' ? value : ''))
+      .toBe('draft')
   })
 
-  it('stages a clear (reset) and unsets the user layer on save', async () => {
-    const scope = fakeScope({
-      base: { sound: true },
-      value: { enabled: true, sound: false, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-      user: { sound: false },
-    })
-    const form = new NotifyCardController(scope)
-    form.reset('sound')
-    const snapshot = form.getSnapshot()
-    expect(snapshot.shell.dirty).toBe(true)
-    expect(snapshot.sound.value).toBe(true) // falls back to the base layer
-    expect(snapshot.sound.overridden).toBe(false)
-    await form.save()
-    expect(scope.writes).toEqual([{ op: 'unset', field: 'sound' }])
+  it('renders the default layer for a staged clear', () => {
+    const staged: StagedMap = new Map([['title', { kind: 'clear' as const }]])
+    expect(fieldValue('title', { title: 'from host' }, staged, value => typeof value === 'string' ? value : DEFAULTS.title))
+      .toBe(DEFAULTS.title)
+  })
+})
+
+describe('fieldOverridden', () => {
+  it('marks a field the user layer carries', () => {
+    expect(fieldOverridden('sound', { sound: false }, new Map())).toBe(true)
+    expect(fieldOverridden('sound', { title: 'x' }, new Map())).toBe(false)
   })
 
-  it('writes the nested sounds object as one field', async () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: { completed: 'Glass', error: 'Sosumi', approval: 'Ping' }, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    const snapshot = form.getSnapshot()
-    form.stage('sounds', { ...{ completed: snapshot.sounds.completed.value, error: snapshot.sounds.error.value, approval: snapshot.sounds.approval.value }, completed: 'Funk' })
-    await form.save()
-    expect(scope.writes).toEqual([{ op: 'set', field: 'sounds', value: { completed: 'Funk', error: 'Sosumi', approval: 'Ping' } }])
+  it('marks a staged set as an override and a staged clear as not', () => {
+    expect(fieldOverridden('sound', {}, new Map([['sound', { kind: 'set' as const, value: true }]]))).toBe(true)
+    expect(fieldOverridden('sound', { sound: false }, new Map([['sound', { kind: 'clear' as const }]]))).toBe(false)
   })
 
-  it('parses the quiet-hours draft into the stored array on save', async () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    form.stage('quietHours', '22:00-08:00, 09:00-10:00')
-    await form.save()
-    expect(scope.writes).toEqual([{ op: 'set', field: 'quietHours', value: ['22:00-08:00', '09:00-10:00'] }])
+  it('treats an absent or malformed user layer as no overrides', () => {
+    expect(fieldOverridden('sound', undefined, new Map())).toBe(false)
+    expect(fieldOverridden('sound', [], new Map())).toBe(false)
+    expect(fieldOverridden('sound', 'nope', new Map())).toBe(false)
   })
+})
 
-  it('clears quietHours when the draft is empty', async () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: ['22:00-08:00'] },
-      user: { quietHours: ['22:00-08:00'] },
+describe('DEFAULTS', () => {
+  it('mirrors the host schema defaults', () => {
+    const section: NotifySection = {
+      enabled: DEFAULTS.enabled,
+      title: DEFAULTS.title,
+      sound: DEFAULTS.sound,
+      sounds: DEFAULTS.sounds,
+      onBlocked: DEFAULTS.onBlocked,
+      onQuestion: DEFAULTS.onQuestion,
+      onApproval: DEFAULTS.onApproval,
+    }
+    expect(section).toEqual({
+      enabled: true,
+      title: 'DeepSeek Harness',
+      sound: true,
+      sounds: { completed: 'Glass', error: 'Sosumi', approval: 'Ping' },
+      onBlocked: true,
+      onQuestion: true,
+      onApproval: true,
     })
-    const form = new NotifyCardController(scope)
-    form.stage('quietHours', '')
-    await form.save()
-    expect(scope.writes).toEqual([{ op: 'unset', field: 'quietHours' }])
-  })
-
-  it('discard drops every staged edit', () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    form.stage('sound', false)
-    form.stage('enabled', false)
-    expect(form.getSnapshot().shell.dirty).toBe(true)
-    form.discard()
-    expect(form.getSnapshot().shell.dirty).toBe(false)
-    expect(form.getSnapshot().sound.value).toBe(true)
-    expect(form.getSnapshot().enabled.value).toBe(true)
-  })
-
-  it('keeps the snapshot reference stable until something changes', () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    const form = new NotifyCardController(scope)
-    const first = form.getSnapshot()
-    // The selector hook the card binds compares with Object.is, so repeated
-    // reads must return the identical reference while nothing changed.
-    expect(form.getSnapshot()).toBe(first)
-    form.stage('sound', false)
-    expect(form.getSnapshot()).not.toBe(first)
-    expect(form.getSnapshot().sound.value).toBe(false)
-  })
-
-  it('keeps drafts and reports failed when a write does not land', async () => {
-    const scope = fakeScope({
-      value: { enabled: true, sound: true, sounds: {}, onBlocked: true, onQuestion: true, onApproval: true, title: 'DeepSeek Harness', quietHours: [] },
-    })
-    scope.set = async () => { throw new Error('write refused') }
-    const form = new NotifyCardController(scope)
-    form.stage('sound', false)
-    await form.save()
-    const snapshot = form.getSnapshot()
-    expect(snapshot.shell.failed).toBe(true)
-    expect(snapshot.shell.dirty).toBe(true) // drafts kept for correction
-    expect(snapshot.sound.value).toBe(false)
   })
 })

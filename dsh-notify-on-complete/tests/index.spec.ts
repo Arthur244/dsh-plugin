@@ -121,7 +121,7 @@ describe('apply', () => {
     expect(mockedSpawn).toHaveBeenCalledWith('osascript', [
       '-e',
       'display notification "任务已完成 (session: root)" with title "T" sound name "Glass"',
-    ], { detached: true, stdio: 'ignore' })
+    ], { stdio: 'ignore', windowsHide: true })
   })
 
   it('reports the failing kind of the last turn end-to-end', () => {
@@ -271,7 +271,8 @@ describe('apply', () => {
     setPlatform('darwin')
     const ctx = mockCtx()
     apply(ctx)
-    const session = { header: { id: 'root' }, events: [{ type: 'session/title', data: { title: '修复登录bug' } }] }
+    // DSH 0.2.2 removed the `events` array; the log is read through `snapshotEvents()`.
+    const session = { header: { id: 'root' }, snapshotEvents: () => [{ type: 'session/title', data: { title: '修复登录bug' } }] }
     ctx.emit('session/event', session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
     ctx.emit('agent/status', { status: 'idle', agent: { id: 'root', session } })
     expect(mockedSpawn.mock.calls[0]![1]!.join(' ')).toContain('任务已完成 — 修复登录bug (session: root)')
@@ -376,55 +377,70 @@ describe('apply', () => {
     expect(mockedSpawn.mock.calls[0]![1]!.join(' ')).not.toContain('sound name')
   })
 
-  describe('with the settings service attached', () => {
-    /** Make `ctx.inject` fire its callback synchronously with a fake settings scope. */
-    function attachSettings(ctx: MockCtx, scope: { get: () => NotifyConfig; watch: ReturnType<typeof vi.fn> }): void {
-      ctx.inject = vi.fn((services: unknown, cb: (sctx: {
-        settings: { register: () => unknown }
-        effect: () => () => unknown
-        get: (name: string) => unknown
-      }) => void) => {
-        cb({
-          settings: { register: () => scope },
-          effect: () => () => {},
-          // No webServer in unit tests: the settings API route is skipped.
-          get: () => undefined,
-        })
-      }) as never
+  describe('with a schema-resolved (volatile) config', () => {
+    /** A volatile reference the test can swap, as the Loader does on a committed write. */
+    function mutableRef<T>(initial: T) {
+      let value = initial
+      return {
+        get: () => value,
+        set: (next: T) => { value = next },
+      }
     }
 
-    function panelValue(title: string): NotifyConfig {
-      return { enabled: true, title, sound: true, sounds: { completed: 'Glass', error: 'Sosumi', approval: 'Ping' }, quietHours: [], onBlocked: true, onQuestion: true, onApproval: true }
+    /** The full volatile config the Loader hands `apply` for the plugin's schema. */
+    function volatileConfig(title: string) {
+      const titleRef = mutableRef(title)
+      const ref = mutableRef(true)
+      return {
+        config: {
+          enabled: ref,
+          title: titleRef,
+          sound: ref,
+          sounds: mutableRef({ completed: 'Glass', error: 'Sosumi', approval: 'Ping' }),
+          quietHours: mutableRef<string[]>([]),
+          onBlocked: ref,
+          onQuestion: ref,
+          onApproval: ref,
+        },
+        title: titleRef,
+      }
     }
 
-    it('uses the settings panel value when the settings service attaches', () => {
+    it('reads the live config instead of the entry config', () => {
       setPlatform('darwin')
       const ctx = mockCtx()
-      const scope = { get: () => panelValue('Panel Title'), watch: vi.fn() }
-      attachSettings(ctx, scope)
-      apply(ctx, { title: 'Entry Title' })
+      const { config } = volatileConfig('Panel Title')
+      apply(ctx, { ...config, title: config.title } as never)
       ctx.emit('session/event', ...rootTurnEnd('completed'))
       ctx.emit('agent/status', ...idleRoot())
       expect(mockedSpawn.mock.calls[0]![1]!.join(' ')).toContain('with title "Panel Title"')
     })
 
-    it('applies settings panel edits live without a restart', () => {
+    it('applies a settings write live without a restart', () => {
       setPlatform('darwin')
       const ctx = mockCtx()
-      let panel = panelValue('Panel Title')
-      const scope = { get: () => panel, watch: vi.fn() }
-      attachSettings(ctx, scope)
-      apply(ctx, { title: 'Entry Title' })
+      const { config, title } = volatileConfig('Panel Title')
+      apply(ctx, config as never)
       ctx.emit('session/event', ...rootTurnEnd('completed'))
       ctx.emit('agent/status', ...idleRoot())
       expect(mockedSpawn.mock.calls[0]![1]!.join(' ')).toContain('with title "Panel Title"')
-      // The panel commits a change: the scope's watch callback is the hook the
-      // plugin re-reads its source through.
-      panel = panelValue('Changed Title')
-      scope.watch.mock.calls[0]![0]()
+      // A committed settings write swaps the reference's value in place; the
+      // plugin's next event reads the new one without reloading.
+      title.set('Changed Title')
       ctx.emit('session/event', ...rootTurnEnd('completed'))
       ctx.emit('agent/status', ...idleRoot())
       expect(mockedSpawn.mock.calls[1]![1]!.join(' ')).toContain('with title "Changed Title"')
+    })
+
+    it('stops notifying once a write disables the plugin', () => {
+      setPlatform('darwin')
+      const ctx = mockCtx()
+      const { config } = volatileConfig('Panel Title')
+      apply(ctx, config as never)
+      config.enabled.set(false)
+      ctx.emit('session/event', ...rootTurnEnd('completed'))
+      ctx.emit('agent/status', ...idleRoot())
+      expect(mockedSpawn).not.toHaveBeenCalled()
     })
   })
 })
