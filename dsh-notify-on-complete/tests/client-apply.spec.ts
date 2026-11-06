@@ -2,11 +2,16 @@
  * Copyright (c) 2026 Luozy
  * SPDX-License-Identifier: MIT
  */
-// Client entry apply: the settings page registers into the keyed
-// `plugins.row.config` slot under `<package name>#<row id>`. The slot registry
-// rejects a keyless keyed registration at load, and the Plugins page dispatches
-// a row's page by exactly that key, so the key this spec locks is the
-// plugin-load contract — not just a rendering detail.
+// Client entry apply: the page registers twice, and both keys are
+// plugin-load contracts rather than rendering details.
+//
+//  - `settings.section` puts the page in the settings panel beside General and
+//    Models, which is where this plugin's configuration belongs. Its `id`
+//    names the navigation row and must equal the settings namespace, because
+//    the shell resolves the Host form by that id.
+//  - `plugins.row.config` keeps the same page on the Plugins page, keyed by
+//    `<package name>#<row id>`. A keyed slot rejects a keyless registration at
+//    load, and the row id is the same settings namespace.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { apply } from '../src/client/index.tsx'
 
@@ -17,10 +22,12 @@ interface RegisterOptions {
   key?: string
   id?: string
   order?: number
+  label?: string | (() => string)
   inject?: () => unknown
+  children?: Record<string, unknown>
 }
 
-/** A minimal slots/context fake capturing one register call. */
+/** A minimal slots/context fake capturing every register call. */
 function harness(): { ctx: ClientContext; registered: RegisterOptions[] } {
   const registered: RegisterOptions[] = []
   const slots = {
@@ -42,19 +49,30 @@ function harness(): { ctx: ClientContext; registered: RegisterOptions[] } {
 describe('client entry apply', () => {
   afterEach(() => { vi.unstubAllGlobals() })
 
-  it('registers the settings page keyed by package name and row id', () => {
+  it('registers the page as a settings section and as the bundle row configuration', () => {
     const { ctx, registered } = harness()
     apply(ctx)
-    expect(registered).toHaveLength(1)
-    expect(registered[0]).toMatchObject({
-      name: 'plugins.row.config',
-      // The Plugins page keys a row's page by `<package name>#<row id>`, and
-      // the row id must match the entry id the bundle patch mounts, because
-      // that same string is the settings namespace.
+    expect(registered).toHaveLength(2)
+
+    const section = registered.find(entry => entry.name === 'settings.section')
+    expect(section).toBeDefined()
+    expect(section).toMatchObject({
+      // The navigation row id is the settings namespace the Host describes.
+      id: 'notify-on-complete',
+      order: 40,
+    })
+    // A settings section is a list slot: `key` belongs to keyed slots only.
+    expect(section?.key).toBeUndefined()
+    expect(typeof section?.label === 'function' ? section.label() : section?.label).toBe('运行完成通知')
+
+    const row = registered.find(entry => entry.name === 'plugins.row.config')
+    expect(row).toBeDefined()
+    expect(row).toMatchObject({
+      // The Plugins page dispatches a row's page by `<package name>#<row id>`.
       key: 'dsh-notify-on-complete#notify-on-complete',
       order: 30,
     })
     // `id` names list-slot entries; keyed slots dispatch by `key` instead.
-    expect(registered[0].id).toBeUndefined()
+    expect(row?.id).toBeUndefined()
   })
 })
