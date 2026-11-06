@@ -24,13 +24,22 @@
 
 `ref/` 是只读参考：**不要修改它、不要在其中提交、不要用 `dsh plugin add` 安装它**。
 
+**「只读」的边界（2026-11-06）**：只读约束的是 `ref/` 里 **submodule 的文件内容**，不约束「把某个仓库以 submodule 形式引入 `ref/`」这个仓库级操作。
+
+- 经授权的 `git submodule add --name <短名> <URL> ref/<目录名>` **允许写 `ref/` 之外的东西**——写 `.gitmodules`、向索引登记 gitlink（mode `160000`）都是引入流程的必需动作，不视为违反 `ref/` 只读约定，不需要为此改用根目录或别的路径。
+- **授权来源有两条，任一成立即视为已获当次授权**：
+  1. **用户直接下指令**——用户明确说「把这个仓库加为 submodule」「放到 `ref/` 下」之类，这条指令本身就包含对该次添加操作的授权，**不必再追问一轮**。
+  2. **审批弹窗确认**——agent 自行判断需要对仓库（尤其是 `ref/`）做添加操作时，通过审批弹窗 / 确认问答拿到用户的明确同意后即可执行。
+- 两种来源都**只覆盖这一次添加操作**。加完之后：`ref/<新目录>` 里的文件照样只读（不改、不提交、不 `dsh plugin add`）；`git add` / `git commit` 仍按下文「Git 授权」单独申请。
+- 想**启用**某个插件（而不只是当参考读）时，做法仍是在根目录放一份、再 `dsh plugin add`；但这是「用途选择」，不是「`ref/` 只读」带来的限制，不要拿只读规则去劝用户换路径。
+
 ## 仓库结构
 
 ```text
 <插件名>/           每个插件一个根级目录，自带 package.json / cordis.patch.yml / README.md
 docs/               仓库级调研与踩坑文档（中文，按主题分文件）
 asset/              README 配图，统一放这里
-ref/                git submodule，只读参考仓库（deepseek-harness、dsh-skills-manager、dsh-find-plugin）
+ref/                git submodule，只读参考仓库（deepseek-harness、dsh-skills-manager、dsh-find-plugin、dsh-notify-on-complete）
 .dsh/               本机工作区级 DSH 配置，已 gitignore，不提交
 test/               本地试验目录，不入库
 submodule.md        submodule 操作说明
@@ -67,7 +76,7 @@ dsh --profile web --dump-config
 
 ## 编辑禁区
 
-- `ref/` 是 submodule：只读，不要改里面的文件、不要在其内部提交。submodule 的增删操作见 [`submodule.md`](./submodule.md)。
+- `ref/` 是 submodule：只读，不要改里面的文件、不要在其内部提交。submodule 的增删操作见 [`submodule.md`](./submodule.md)。**注意**：只读约束的是目录里的文件内容；经授权的 `git submodule add ... ref/<目录名>` 是允许的（授权来源见上文「『只读』的边界」：用户直接下指令，或审批弹窗确认）。
 - `.dsh/` 是本机配置，被 `.gitignore` 忽略；不要为了让某个文件入库而删掉 `/.dsh/` 规则。
 - lockfile（`package-lock.json` / `pnpm-lock.yaml`）属于版本库内容，不要 `gitignore` 掉；**是否 `git add` / `git commit` 走下文「Git 授权」，每次单独授权**。
 - `docs/` 里有些文件是某台机器在某个时间点的快照，会过期；引用结论前先看文件头的时间与版本标注，不要把它当成当前事实。
@@ -96,6 +105,7 @@ dsh --profile web --dump-config
   - 不复用到同一命令的第二次运行（改了东西重新 `add` 也要再问）。
   - 会话中途的「继续」「按你的建议做」不构成对后续 git 操作的授权。
 - **只读查询不需要授权**：`git status`、`git log`、`git diff`、`git show`、`git describe`、`git blame`、`git branch -a`（仅查询）、`git submodule status`、`git rev-parse` 等不写仓库状态的命令可以直接跑。
+- **用户直接下指令 = 授权该指令明确覆盖的操作**：例如「把这个仓库加为 submodule」「放到 `ref/` 下」，指令本身即对应那次 `git submodule add` 的授权，不必再追问一轮；但授权窄到**这一条命令、这一次执行**，不延伸到同批的其他命令（尤其 `git add` / `git commit`）。
 - 拿不准某条命令是否会写仓库时，**当作会写**，先问。
 - 请求授权时说清楚「哪条命令、涉及哪些文件/commit、为什么需要它」，不要用含糊的「我要提交一下」代替。用户拒绝或沉默，就停在原地并把改动留在工作区，不要换个命令绕过去。
 
