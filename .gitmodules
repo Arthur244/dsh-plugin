@@ -7,3 +7,6 @@
 [submodule "dsh-find-plugin"]
 	path = ref/dsh-find-plugin
 	url = https://github.com/awesome-dsh-plugin/dsh-find-plugin.git
+[submodule "dsh-notify-on-complete"]
+	path = ref/dsh-notify-on-complete
+	url = https://github.com/pitetow/dsh-notify-on-complete
