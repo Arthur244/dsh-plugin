@@ -45,7 +45,7 @@ submodule.md        submodule 操作说明
 - `cordis.patch.yml` 用 `- insert:` 插入一行，`id` 全局唯一，`name` 与包名一致。
 - 入口导出 `export const name` 和 `export function apply(ctx)`；通过 `ctx` 注册工具、命令、事件或 UI。
 - `engines.dsh` 按**实际验证过**的 DSH 版本填，不要照抄 README 示例范围；`files` 要包含运行期需要的全部文件。
-- 纯 JS 插件的入口直接放插件目录并提交；TypeScript 插件源码在 `src/`，`tsc` 产物在 `lib/`，**`lib/` 也要入库**（安装是链接而非拷贝）。
+- 纯 JS 插件的入口直接放插件目录；TypeScript 插件源码在 `src/`，`tsc` 产物在 `lib/`，**`lib/` 也要入库**（安装是链接而非拷贝）。这里的「入库」指该文件属于版本库内容、不能靠 `.gitignore` 排除，**不构成执行 `git add` / `git commit` 的授权**——见下文「Git 授权」。
 - 每个插件目录必须有 `README.md`，写清安装命令、配置项与已知问题。
 
 ## 安装与验证
@@ -69,7 +69,7 @@ dsh --profile web --dump-config
 
 - `ref/` 是 submodule：只读，不要改里面的文件、不要在其内部提交。submodule 的增删操作见 [`submodule.md`](./submodule.md)。
 - `.dsh/` 是本机配置，被 `.gitignore` 忽略；不要为了让某个文件入库而删掉 `/.dsh/` 规则。
-- lockfile（`package-lock.json` / `pnpm-lock.yaml`）要提交，用于复现依赖版本。
+- lockfile（`package-lock.json` / `pnpm-lock.yaml`）属于版本库内容，不要 `gitignore` 掉；**是否 `git add` / `git commit` 走下文「Git 授权」，每次单独授权**。
 - `docs/` 里有些文件是某台机器在某个时间点的快照，会过期；引用结论前先看文件头的时间与版本标注，不要把它当成当前事实。
 
 ## 文档写法
@@ -78,6 +78,28 @@ dsh --profile web --dump-config
 - 一处事实只写在一个地方：仓库总览写根 `README.md`，插件细节写插件 `README.md`，`docs/` 只放调研与踩坑记录。
 - 根 `README.md` 不逐条介绍 `docs/` 里的文件，只保留一句指向 `docs/` 目录的入口；新增或删除 `docs/` 文件不需要改根 README。
 - 结论若来自源码核对，注明核对对象（`ref/` 的 commit 或本机运行版本），别写“应该”“大概”。
+
+## Git 授权：每次都要显式问，一次一授权
+
+> **硬性规则。违反它就是越权操作，没有「顺手」「应该没问题」的余地。**
+
+**任何会改变仓库状态的 git 命令，执行前必须先取得用户当次显式授权。**
+
+- 必须先问、得到明确「同意 / 可以 / 执行」之后才能发出的命令，包括但不限于：
+  - 提交类：`git add`、`git commit`、`git commit --amend`、`git tag`
+  - 远端类：`git push`、`git fetch`（会写 `refs/remotes`）、`git pull`、`git remote add/set-url/remove`
+  - 改写历史与工作区：`git checkout`、`git switch`、`git restore`、`git reset`、`git clean`、`git stash`（含 `pop`/`apply`/`drop`）、`git revert`、`git cherry-pick`、`git merge`、`git rebase`
+  - 分支与 submodule：`git branch`（新增/删除/改名）、`git submodule add/update/deinit/rm`、`git config`（写）
+- **授权单次有效。** 一次同意只对「这一条命令、这一次执行」生效：
+  - 不复用到同一批改动的下一条命令（同意 `git add` 不等于同意 `git commit`）。
+  - 不复用到下一次同类操作（这次同意 commit，下次 commit 仍要再问）。
+  - 不复用到同一命令的第二次运行（改了东西重新 `add` 也要再问）。
+  - 会话中途的「继续」「按你的建议做」不构成对后续 git 操作的授权。
+- **只读查询不需要授权**：`git status`、`git log`、`git diff`、`git show`、`git describe`、`git blame`、`git branch -a`（仅查询）、`git submodule status`、`git rev-parse` 等不写仓库状态的命令可以直接跑。
+- 拿不准某条命令是否会写仓库时，**当作会写**，先问。
+- 请求授权时说清楚「哪条命令、涉及哪些文件/commit、为什么需要它」，不要用含糊的「我要提交一下」代替。用户拒绝或沉默，就停在原地并把改动留在工作区，不要换个命令绕过去。
+
+反面例子（真实发生过，作为警示）：用户只要求「把 submodule 升级到某个版本」，agent 自作主张追加了 `git add` + `git commit`，把版本升级、文档行号修正和 `AGENTS.md` 改动一起提交成了 `3d913e7`。这类「任务完成了顺便提交一下」的行为明确禁止——版本升级只要求改工作区与指针，提交与否由用户决定。
 
 ## 提交前自检
 
