@@ -1,0 +1,84 @@
+{
+  "name": "dsh-notify-on-complete",
+  "version": "0.3.0",
+  "description": "Desktop notifications for DeepSeek Harness (dsh): run completion, model questions, and approval requests. Zero runtime dependencies — all peers provided by the dsh CLI.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "notifications",
+    "desktop-notifications",
+    "notify",
+    "cordis",
+    "plugin",
+    "cli",
+    "nodejs",
+    "typescript",
+    "通知",
+    "桌面通知",
+    "插件"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "author": "Luozy",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pitetow/dsh-notify-on-complete"
+  },
+  "homepage": "https://github.com/pitetow/dsh-notify-on-complete#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "import": "./lib/index.js"
+    },
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml"
+  ],
+  "dsh": {
+    "category": "extension",
+    "displayName": "运行完成通知",
+    "image": "https://raw.githubusercontent.com/pitetow/dsh-notify-on-complete/main/assets/notify-cover.jpg",
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "pnpm run build:host && pnpm run build:client",
+    "build:host": "tsc -p tsconfig.json && node scripts/add-header.mjs",
+    "build:client": "tsdown && node scripts/normalize-client-banner.mjs",
+    "prepare": "pnpm run build",
+    "prepublishOnly": "pnpm run test && pnpm run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.5",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-settings": "^0.1.0-rc.5",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@types/node": "^22",
+    "@types/react": "^18.3.12",
+    "react": "^18.3.1",
+    "tsdown": "^0.22.14",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
+}
