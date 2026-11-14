@@ -41,9 +41,9 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
-- **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 在新会话创建时应用 Auto，风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
+- **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 仅在全新主代理初始化时应用 Auto，不覆盖子代理的 `Auto + never` 或恢复会话的权限；风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
 - **`dsh-find-plugin`**（0.4.0）：复刻并适配上游 `dsh-find-plugin`，提供 `find_dsh_plugin` 工具与 `/find-plugin` 斜杠命令。命令本身不搜索，只把你的原话交给 agent，由 agent 决定 `query` / `limit` / `lang` 再调用工具。详见 [插件 README](./dsh-find-plugin/README.zh.md)。
-- **`dsh-auto-review-model-override`**（0.1.0）：官方 Auto review 的 reviewer 固定复用当前会话的 provider/model、没有配置入口，且审查链路故障时直接硬拒（比模型拒绝更严厉）。本插件接管 `llm/stream` 里以 `REVIEW_POLICY` 开头的审查请求，把它改派到指定路由，并按「审查路由重试 → 显式降级 → 会话模型」逐级回落，全部失败后按配置合成决策或弹人工确认。详见 [插件 README](./dsh-auto-review-model-override/README.zh.md)。
+- **`dsh-auto-review-model-override`**（0.1.0）：官方 Auto review 的 reviewer 固定复用当前会话的 provider/model、没有配置入口，且审查链路故障时直接硬拒（比模型拒绝更严厉）。本插件接管 `llm/stream` 里以 `REVIEW_POLICY` 开头的审查请求，把它改派到指定路由，在统一时间预算内按「审查路由重试 → 去重后的备用路由 → 会话模型」回落，校验完整决策协议，取消立即收敛；最终处置尊重官方审批策略，子代理 `never` 不转人工。详见 [插件 README](./dsh-auto-review-model-override/README.zh.md)。
 - **`dsh-agent-config`**（未实现）：目前只有设计草案，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。详见 [插件 README](./dsh-agent-config/README.md)。
 
 每个插件的安装命令、配置项和已知问题，以插件目录下的 README 为准。
@@ -190,7 +190,8 @@ dsh-plugin/
 ├── dsh-autorevivw-hold/      # 插件：默认权限模式加入「自动审查」
 │   ├── package.json
 │   ├── cordis.patch.yml
-│   ├── index.js              # Host 侧入口（新会话应用 Auto）
+│   ├── index.js              # Host 侧入口（仅全新主代理初始化默认 Auto）
+│   ├── test/                 # 默认权限与子代理隔离回归
 │   ├── schema.js             # 插件配置 schema
 │   ├── client.js             # Web UI 入口（重绘权限设置行）
 │   ├── locale/               # 插件标题 / 描述（en / zh）
@@ -208,6 +209,8 @@ dsh-plugin/
 │   ├── package.json
 │   ├── cordis.patch.yml
 │   ├── index.js              # Host 侧入口（改写 llm/stream 审查路由）
+│   ├── resilience.js         # 有界流收集、协议校验与去重回退
+│   ├── test/                 # 离线回归与官方服务组合隔离测试
 │   ├── schema.js             # 插件配置 schema（依赖 schemastery）
 │   ├── client.js             # Web UI 入口（设置页模型选择行）
 │   ├── locale/               # 插件标题 / 描述（en / zh）
