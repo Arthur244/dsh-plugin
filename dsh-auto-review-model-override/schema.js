@@ -24,17 +24,20 @@ export const Config = z.object({
   /** Total attempts for one review request, including the first (1 disables retry). */
   retryAttempts: z.natural().default(3).volatile()
     .description('审查请求的总尝试次数（含首次），1 表示不重试。'),
-  /** Per-attempt timeout in milliseconds (0 disables the timeout). */
+  /** Whole-operation deadline, including retries, backoff and fallback. Always finite. */
+  totalTimeoutMs: z.natural().default(120000).volatile()
+    .description('审查操作的总时间预算，含重试与回落；默认 120 秒，0 仍使用默认值。'),
+  /** Per-attempt cap; 0 uses the remaining whole-operation budget. */
   timeoutMs: z.natural().default(30000).volatile()
-    .description('单次审查尝试的超时毫秒数，0 表示不设超时。'),
+    .description('单次审查尝试的超时毫秒数；0 使用剩余总预算，不允许无限等待。'),
   /**
    * Timeout for the fall-back routes (the configured fallback and the session
    * model), in milliseconds. These are the last-resort routes, so the default
-   * is more generous than `timeoutMs`; a value of 0 disables the timeout and
-   * waits indefinitely (the legacy behavior).
+   * is more generous than `timeoutMs`; 0 uses the remaining total budget.
+   * Neither setting can disable the whole-operation deadline.
    */
   fallbackTimeoutMs: z.natural().default(60000).volatile()
-    .description('回落路由的超时毫秒数（降级与会话模型），0 表示不设超时。'),
+    .description('回落路由超时（降级与会话模型）；0 使用剩余总预算。'),
   /**
    * Optional route tried after every retry fails, before the automatic
    * fall-back to the session's own model. An empty provider or model simply
@@ -51,7 +54,7 @@ export const Config = z.object({
    * `allow` is available but trusts the call without a review.
    */
   onFailure: z.union(['ask', 'deny', 'allow']).default('ask').volatile()
-    .description('审查彻底失败后如何处理工具调用：ask 弹窗询问 / deny 拒绝 / allow 放行。'),
+    .description('审查故障最终处置：ask 合成拒绝并由官方审批策略决定（子代理 never 直接拒绝）；deny 硬拒；allow 显式故障放行。'),
 })
 
 export default Config

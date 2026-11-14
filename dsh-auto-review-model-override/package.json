@@ -12,6 +12,7 @@
   },
   "files": [
     "index.js",
+    "resilience.js",
     "schema.js",
     "client.js",
     "cordis.patch.yml",
@@ -40,6 +41,9 @@
     "@deepseek-ai/schemastery": "^3.18.0"
   },
   "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "devDependencies": {
     "@deepseek-ai/schemastery": "^3.19.0"
   }
