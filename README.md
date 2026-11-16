@@ -38,12 +38,14 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | [`dsh-autorevivw-hold`](./dsh-autorevivw-hold) | 在「设置 → 通用 → 权限」的默认权限模式中加入「自动审查（实验）」，切换时弹风险确认并可勾选不再提示 | desktop | ✅ 可用 |
 | [`dsh-find-plugin`](./dsh-find-plugin) | 让 agent 自己去 GitHub 的 `dsh-plugin` topic 里找插件，按 star 排序返回说明与安装命令；附 `/find-plugin` 斜杠命令 | desktop / web | ✅ 可用 |
 | [`dsh-auto-review-model-override`](./dsh-auto-review-model-override) | 为官方 Auto review 单独指定审查模型，并给审查链路补上超时 / 重试 / 降级 / 兜底 | desktop | ✅ 可用 |
+| [`dsh-startup-overlay`](<./dsh-startup-overlay/README.md>) | 保留首次 loading，以最多 8 秒的就绪等待衔接设置与账号首帧；异常放行，不改交互锁 | desktop | 🧪 重启主路径已验证 |
 | [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
 - **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 仅在全新主代理初始化时应用 Auto，不覆盖子代理的 `Auto + never` 或恢复会话的权限；风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
 - **`dsh-find-plugin`**（0.4.0）：复刻并适配上游 `dsh-find-plugin`，提供 `find_dsh_plugin` 工具与 `/find-plugin` 斜杠命令。命令本身不搜索，只把你的原话交给 agent，由 agent 决定 `query` / `limit` / `lang` 再调用工具。详见 [插件 README](./dsh-find-plugin/README.zh.md)。
 - **`dsh-auto-review-model-override`**（0.1.0）：官方 Auto review 的 reviewer 固定复用当前会话的 provider/model、没有配置入口，且审查链路故障时直接硬拒（比模型拒绝更严厉）。本插件接管 `llm/stream` 里以 `REVIEW_POLICY` 开头的审查请求，把它改派到指定路由，在统一时间预算内按「审查路由重试 → 去重后的备用路由 → 会话模型」回落，校验完整决策协议，取消立即收敛；最终处置尊重官方审批策略，子代理 `never` 不转人工。详见 [插件 README](./dsh-auto-review-model-override/README.zh.md)。
+- **[`dsh-startup-overlay`](<./dsh-startup-overlay/README.md>)**（0.2.0）：用有界的启动就绪等待替代旧 DOM 补丁，衔接首次 loading 与设置、账号首次状态；不加速请求、不跳过真正的首次引导。仅适配 DSH `0.2.2-rc.3`，用户已确认当前环境重启后未再看到「加载设置」画面；首装、离线等场景仍待验收。安装、诊断与验证边界见[插件 README](<./dsh-startup-overlay/README.md>)。
 - **`dsh-agent-config`**（未实现）：目前只有设计草案，尚未落地代码。方向是把 `dsh-skills-manager` 那套「来源分组 + 开关 + 详情」的信息架构扩展到规则和子代理，并区分全局 / 工作区两个作用域。详见 [插件 README](./dsh-agent-config/README.md)。
 
 每个插件的安装命令、配置项和已知问题，以插件目录下的 README 为准。
@@ -217,6 +219,14 @@ dsh-plugin/
 │   ├── icon.svg
 │   ├── node_modules/         # link 安装需要，不入库；npm install 生成
 │   └── README.md / README.zh.md
+├── dsh-startup-overlay/      # 插件：有界启动就绪等待（不改遮罩 DOM）
+│   ├── package.json / cordis.patch.yml
+│   ├── index.js / client.js   # Host 空入口 / 自包含客户端产物
+│   ├── src/ / scripts/        # 源码与无依赖构建器
+│   ├── test/                 # 纯门闩、服务适配与打包契约回归
+│   ├── locale/ / icon.svg
+│   ├── startup-overlay-loading-settings.md  # 源码调研与方案取舍
+│   └── README.md             # 安装、行为、诊断及验收状态
 ├── dsh-agent-config/         # 设计中，目前只有 doc/design.md
 │   ├── doc/design.md
 │   └── README.md             # 状态与设计稿入口

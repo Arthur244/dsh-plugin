@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Startup readiness barrier",
+    "description": "Keep the initial loading screen until shared settings and the first account state settle, instead of showing a second settings-loading screen. Waits at most 8 seconds; errors, timeout and unload fail open. Signed-out is valid. No DOM, interaction-lock or preference changes; does not speed up requests. DSH 0.2.2-rc.3 only."
+  }
+}

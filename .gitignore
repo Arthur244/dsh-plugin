@@ -86,3 +86,7 @@ state.json.bak
 # 若以后想把示例配置随仓库分享，改成按子目录忽略，例如：
 # !/.dsh/
 # /.dsh/agent-config/
+
+# ---------- WorkBuddy 记忆/工作态 ----------
+# .workbuddy/memory/ 是工具生成的本机工作记忆，因机器与时间而异，整目录忽略。
+/.workbuddy/
