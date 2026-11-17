@@ -43,7 +43,7 @@ async function fixture(options = {}) {
   ctx.provide('workingDirectory', { ensure: async () => workspace });
   ctx.provide('shell', { sandboxMode: 'workspace-write' });
   ctx.provide('tools', {});
-  ctx.provide('llm', { stream: o => ctx.waterfall('llm/stream', o, () => {
+  ctx.provide('llm', { registration: () => ({ adapter: {} }), stream: o => ctx.waterfall('llm/stream', o, () => {
     routes.push(o.provider + '/' + o.model);
     return options.respond ? options.respond(o, routes.length) : deny();
   }) });

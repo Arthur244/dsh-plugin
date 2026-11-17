@@ -13,6 +13,7 @@
   "files": [
     "index.js",
     "resilience.js",
+    "review-dispatch.js",
     "schema.js",
     "client.js",
     "cordis.patch.yml",

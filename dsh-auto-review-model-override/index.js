@@ -4,6 +4,7 @@
  */
 import { Config } from './schema.js'
 import { resilientStream } from './resilience.js'
+import { reviewDispatch } from './review-dispatch.js'
 
 export { Config }
 export const name = 'auto-review-model-override'
@@ -42,9 +43,12 @@ function* synthesizeDecision(kind, detail) {
 
 export function apply(ctx, config) {
   ctx.on('llm/stream', (options, next) => {
-    if (options[OVERRIDDEN] === true) return next()
     if (typeof options.system !== 'string' || !options.system.startsWith(REVIEW_POLICY_PREFIX)) return next()
-    if (config.reviewProvider.get() === '' || config.reviewModel.get() === '') return next()
+    if (options[OVERRIDDEN] === true) return reviewDispatch(ctx.llm, options, next)
+    // Empty selectors keep the session route, not the inherited effort.
+    const reviewOptions = { ...options, [OVERRIDDEN]: true }
+    delete reviewOptions.reasoningEffort
+    if (config.reviewProvider.get() === '' || config.reviewModel.get() === '') return ctx.llm.stream(reviewOptions)
     const policy = config.onFailure.get()
     const onExhausted = (failure) => {
       const detail = describeFailure(failure)
@@ -52,6 +56,6 @@ export function apply(ctx, config) {
       if (policy === 'deny') return new Error(`auto-review failed after retries: ${detail}`)
       return synthesizeDecision(policy === 'allow' ? 'allow' : 'deny', detail)
     }
-    return resilientStream(ctx, { ...options, [OVERRIDDEN]: true }, config, options.signal, onExhausted)
+    return resilientStream(ctx, reviewOptions, config, options.signal, onExhausted)
   })
 }

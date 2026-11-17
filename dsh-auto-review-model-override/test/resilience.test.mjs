@@ -26,12 +26,13 @@ function fixture(adapter, values = {}) {
   const calls = []
   const config = refs(values)
   const ctx = { on(event, listener) { assert.equal(event, 'llm/stream'); hook = listener }, llm: {
+    registration() { return { adapter: {} } },
     stream(o) { return hook(o, () => { calls.push(o); return adapter(o) }) },
   } }
   apply(ctx, config)
   return { calls, config,
-    stream: (changes = {}) => ctx.llm.stream({ ...options, ...changes }),
-    run: (changes = {}) => drain(ctx.llm.stream({ ...options, ...changes })),
+    stream: (changes = {}) => ctx.llm.stream(Object.freeze({ ...options, ...changes })),
+    run: (changes = {}) => drain(ctx.llm.stream(Object.freeze({ ...options, ...changes }))),
   }
 }
 async function bounded(work, ms = 600) {
@@ -46,6 +47,36 @@ test('valid deny is final, frozen input preserved, no recursive interception', a
   assert.equal(f.calls.length, 1)
   assert.equal(options.provider, 'session')
   assert.ok(Object.isFrozen(options))
+})
+
+for (const changes of [{ reasoningEffort: 'high' }, { reasoningEffort: 'low' }, { reasoningEffort: 'none' }, { reasoningEffort: undefined }, {}]) {
+  test(`review omits reasoning effort (${Object.hasOwn(changes, 'reasoningEffort') ? String(changes.reasoningEffort) : 'absent'}) and preserves other fields`, async () => {
+    const f = fixture(allow)
+    const messages = Object.freeze([])
+    const stop = Object.freeze(['END'])
+    assert.equal(decision(await f.run({ ...changes, messages, stop, temperature: 0, maxTokens: 512 })).decision, 'allow')
+    assert.equal(f.calls.length, 1)
+    const sent = f.calls[0]
+    assert.equal(Object.hasOwn(sent, 'reasoningEffort'), false)
+    assert.equal(sent.provider, 'review')
+    assert.equal(sent.model, 'r')
+    assert.equal(sent.messages, messages)
+    assert.equal(sent.stop, stop)
+    assert.equal(sent.temperature, 0)
+    assert.equal(sent.maxTokens, 512)
+    assert.equal(sent.system, options.system)
+    assert.equal(sent.sessionId, options.sessionId)
+    assert.equal(sent.purpose, options.purpose)
+  })
+}
+
+test('retries, backup and session fallback all omit reasoning effort', async () => {
+  const f = fixture(o => o.provider === 'session' ? allow() : error(), {
+    retryAttempts: 2, totalTimeoutMs: 2000, fallbackProvider: 'backup', fallbackModel: 'b',
+  })
+  assert.equal(decision(await bounded(f.run({ reasoningEffort: 'high' }), 2500)).decision, 'allow')
+  assert.deepEqual(f.calls.map(o => [o.provider, o.model]), [['review', 'r'], ['review', 'r'], ['backup', 'b'], ['session', 's']])
+  assert.ok(f.calls.every(o => !Object.hasOwn(o, 'reasoningEffort')))
 })
 
 test('primary failure falls back to session; no approval service is accessed', async () => {
@@ -194,13 +225,18 @@ test('onFailure deny remains hard failure; allow is explicit fail-open', async (
   assert.equal(decision(await opened.run()).decision, 'allow')
 })
 
-test('normal requests and empty review route pass through', async () => {
+test('only normal requests retain effort; incomplete review routes filter on the session route', async () => {
   const f = fixture(allow)
-  await f.run({ system: 'normal model request' })
+  await f.run({ system: 'normal model request', reasoningEffort: 'high' })
   assert.equal(f.calls[0].provider, 'session')
-  f.config.reviewModel = ref('')
-  await f.run()
-  assert.equal(f.calls[1].provider, 'session')
+  assert.equal(f.calls[0].reasoningEffort, 'high')
+  for (const values of [{ reviewProvider: '' }, { reviewModel: '' }, { reviewProvider: '', reviewModel: '' }]) {
+    const unconfigured = fixture(allow, values)
+    await unconfigured.run({ reasoningEffort: 'high' })
+    assert.equal(unconfigured.calls.length, 1)
+    assert.equal(unconfigured.calls[0].provider, 'session')
+    assert.equal(Object.hasOwn(unconfigured.calls[0], 'reasoningEffort'), false)
+  }
 })
 
 for (const synthetic of [false, true]) {

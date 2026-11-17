@@ -16,10 +16,10 @@ import z from '@deepseek-ai/schemastery'
 export const Config = z.object({
   /** Provider route used for Auto review requests. */
   reviewProvider: z.string().default('').volatile()
-    .description('自动审查使用的 provider（留空则不接管）。'),
+    .description('自动审查使用的 provider（留空则沿用会话路由，仍过滤思考强度）。'),
   /** Model id passed to that provider for Auto review requests. */
   reviewModel: z.string().default('').volatile()
-    .description('自动审查使用的模型（留空则不接管）。'),
+    .description('自动审查使用的模型（留空则沿用会话路由，仍过滤思考强度）。'),
 
   /** Total attempts for one review request, including the first (1 disables retry). */
   retryAttempts: z.natural().default(3).volatile()
