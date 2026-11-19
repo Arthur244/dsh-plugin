@@ -1,8 +1,8 @@
 # dsh-startup-overlay
 
-**0.2.0：启动就绪等待。** 保留桌面端原有首次 loading，等共享设置和账号首次状态有结果后，再让宿主挂载界面，减少「首次 loading 结束 → 加载设置 → 正式界面」的二次切屏。**不加速请求，不提前解锁，也不跳过真正的首次引导。**
+**0.2.1：补充 DSH 0.2.2-rc.5 兼容性，启动等待逻辑不变。** 保留桌面端原有首次 loading，等共享设置和账号首次状态有结果后，再让宿主挂载界面，减少「首次 loading 结束 → 加载设置 → 正式界面」的二次切屏。**不加速请求，不提前解锁，也不跳过真正的首次引导。**
 
-仅适配 DSH `0.2.2-rc.3`。核对源码：`dsh-v0.2.2-rc.3` / `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`；文档复核于 **2026-11-16**。源码、纯测试和真实客户端 pending → ready 等待已有证据；**用户已确认当前环境重启后未再出现「加载设置」画面**。首装、离线及其他异常/交互场景仍待验收。
+兼容范围为 `0.2.2-rc.3 || 0.2.2-rc.5`，不自动放行其他版本，不使用版本豁免。此前 rc.3 基线：`dsh-v0.2.2-rc.3` / `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`（2026-11-16）；当时源码、纯测试和真实客户端 pending → ready 等待已有证据，且用户确认重启后未再出现「加载设置」画面。**该历史验收不等于 rc.5 重启验收；本次 rc.5 的验证范围见下文。** 首装、离线及其他异常/交互场景仍待验收。
 
 ## 安装与回滚
 
@@ -94,7 +94,23 @@ npm pack --dry-run
 
 [构建器](<./scripts/build.mjs>)将[源码](<./src/client.js>)封装为自包含[客户端产物](<./client.js>)。产物随仓库保留，链接安装不需要安装构建依赖。
 
-### 已有验证证据（2026-11-16）
+### rc.5 兼容性修复与验证（2026-11-19）
+
+- 目标为本机 DSH `0.2.2-rc.5`；参考源码 tag `dsh-v0.2.2-rc.5`、commit `9c2670d3bce5275e0d1610272958121af87787bb`，参考目录只读未修改。
+- 根因是旧 `engines.dsh` 精确限定 rc.3，宿主会拒绝 rc.5；规则见[宿主兼容性检查](<../ref/deepseek-harness/packages/boot/app-boot/src/plugin-compatibility.ts#L51-L101>)。现只声明 rc.3 / rc.5 的精确并集，诊断版本和中英文说明同步为 0.2.1；启动等待策略、8000ms 期限和安全放行条件不变。
+- 构建、产物一致性、语法检查、28 项离线测试和 `npm pack --dry-run` 通过。[宿主兼容性回归](<./test/runtime-compatibility.mjs>)使用本机已安装的检查函数，先复现旧声明拒绝 rc.5，再验证修复声明获准；rc.4、rc.6、0.2.2 正式版及 0.3.0 仍被拒绝，无版本豁免。
+- 单独运行宿主兼容性回归（仓库根目录、当前桌面运行时提供环境变量的 Git Bash）：
+
+  ```sh
+  ELECTRON_RUN_AS_NODE=1 "$DSH_NODE_EXECUTABLE" dsh-startup-overlay/test/runtime-compatibility.mjs \
+    'D:/Users/Arthur/AppData/Local/Programs/DeepSeek Harness/resources/app.asar/dsh'
+  ```
+
+- 核心等待接口已核对 rc.5 的[设置镜像](<../ref/deepseek-harness/packages/client/ui-settings/src/client/settings-mirror.ts#L27-L59>)、[账号首帧提供方](<../ref/deepseek-harness/packages/client/ui-settings-account/src/client/index.ts#L53-L65>)和[启动先等待后挂载的顺序](<../ref/deepseek-harness/packages/client/web/src/boot.ts#L87-L101>)；这些源码相较上述 rc.3 commit 无变化。完整诊断注册合同等部分源码读取被自动审核拒绝，未绕过拒绝，因此不声称所有接口均完成独立复核。
+- 本机沿用现有 `link:` 安装，插件管理器重载返回 `application: applied`、无警告；列表已识别 0.2.1 且无兼容性错误，Host 行为 `active`。没有卸载重装、安装依赖或启用版本豁免。
+- 以上不是 rc.5 的完整启动或视觉验收；未自动退出或重启桌面应用。需完全退出并重启后确认启动衔接，不能用 Host 加载成功代替该验收。
+
+### 此前 rc.3 验证证据（2026-11-16）
 
 - 构建、语法与产物一致性检查通过；28 项纯门闩/服务适配层/包契约测试通过。覆盖账号与设置乱序、未登录、异常、8 秒超时、缺服务、依赖撤销、卸载、同步订阅竞态及晚到诊断。
 - 生成产物的主 apply Promise 在状态就绪前保持 pending、随后 resolve，适配层有断言；它不是实际 Cordis/React/DOM 仿真，不能替代宿主完整启动集成测试。

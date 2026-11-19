@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-enhance",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "工程内置原厂模型资料、已添加模型匹配及受控一键配置；思考档位不含 off。",
   "type": "module",
   "main": "index.js",
@@ -36,10 +36,10 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3 || 0.2.2-rc.5"
   },
   "engines": {
-    "dsh": "0.2.2-rc.3"
+    "dsh": "0.2.2-rc.3 || 0.2.2-rc.5"
   },
   "license": "MIT"
 }

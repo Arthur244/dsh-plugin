@@ -99,7 +99,7 @@ export async function apply(ctx) {
           },
           async query(method) {
             if (method !== 'status') throw new Error('Unknown StartupOverlay method')
-            return { version: '0.2.0', strategy: 'readiness-barrier', desktop, timeoutMs: 8000,
+            return { version: '0.2.1', strategy: 'readiness-barrier', desktop, timeoutMs: 8000,
               startedAtMs: Math.round(startedAt), phase, result, history: history.slice() }
           },
         }), 'startup-overlay: read-only diagnostics')

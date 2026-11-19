@@ -2,7 +2,7 @@
 
 基于工程内置原厂资料快照的模型匹配和受控参数注入插件；models.dev 只用于开发时生成快照。
 
-**状态：0.2.0 将资料改为工程内置的原厂来源快照，运行时不再下载 / 更新 models.dev；推荐参数包含图片输入能力，未指定 / 空 `input` 可填充，已有明确能力需覆盖确认；注入的思考档位不包含 off；默认思考档位功能已暂停并记录在 [TODO](./TODO.md)。89 项当前离线测试和 DSH 0.2.2-rc.3 集成测试通过；测试不调用真实供应商端点，不能代替实机界面验收。**
+**状态：0.2.1 补充 DSH 0.2.2-rc.5 兼容性，宿主和协议 peer 同步声明，未启用版本豁免；0.2.0 将资料改为工程内置的原厂来源快照，运行时不再下载 / 更新 models.dev；推荐参数包含图片输入能力，未指定 / 空 `input` 可填充，已有明确能力需覆盖确认；注入的思考档位不包含 off；默认思考档位功能已暂停并记录在 [TODO](./TODO.md)。89 项当前离线测试和 DSH 0.2.2-rc.5 集成测试通过（rc.3 为此前验证基线）；测试不调用真实供应商端点，不能代替实机界面验收。**
 
 ## 实现范围
 
@@ -20,7 +20,7 @@
 
 ## 安装
 
-只针对实际验证过的 **DSH 0.2.2-rc.3** 声明兼容。运行期使用宿主的 `@deepseek-ai/dsh-typert-protocol` peer；不要绕过 DSH 的加载器直接用普通 Node 启动 Host 入口。
+只针对实际验证过的 **DSH 0.2.2-rc.3 / 0.2.2-rc.5** 声明兼容，范围为 `0.2.2-rc.3 || 0.2.2-rc.5`，不自动放行其他预发布版或正式版。运行期使用宿主的 `@deepseek-ai/dsh-typert-protocol` peer，范围与宿主声明一致；不要绕过 DSH 的加载器直接用普通 Node 启动 Host 入口。
 
 从仓库根目录执行：
 
@@ -34,7 +34,7 @@ Windows 绝对路径使用原生盘符和 `link:`：
 dsh plugin --profile desktop add "link:E:/Code/dsh-plugin/dsh-model-enhance"
 ```
 
-本机 desktop profile 上次恢复启用的是 **0.1.5**；0.2.0 的包文件变更需要按安装说明重新安装。此前更新的移除步骤曾因 profile 锁文件缺少 `billion-context@0.1.216(@types/node@16.9.1)` 记录及 pnpm `ERR_PNPM_RESOLUTION_POLICY_VIOLATIONS_UNHANDLED` 失败。用户重启后授权重试，管理器确认本地链接包仍已安装、但未启用，因此通过 `set_bundle` 恢复启用，无需再次移除或运行依赖安装；结果 `application: applied`、无警告。已复核 Host 条目 `enabled: true` / `fiberPhase: active` 以及 Client footer 入口激活，实际页面操作仍需刷新后验收。本次没有修复或绕过先前的锁文件 / 发布策略问题，也没有请求供应商清单或写入模型参数。以上命令用于其他环境；安装仍会改变 profile，文件实现授权不等于对其他 profile 的安装授权。
+2026-11-19 本机 desktop profile 已将现有链接包重载为 **0.2.1**：管理器返回 `application: applied`、无警告，bundle 不再报 `incompatible-version`，Host 条目为 `enabled: true` / `fiberPhase: active`。本次无需移除、重装或运行依赖安装，没有设置版本豁免、请求供应商清单或写入模型参数；刷新现有 GUI 后再验收页面。以上安装命令用于尚未安装的环境；其他 profile 的安装需要另行授权。
 
 本插件依赖模型设置页与 Host 服务，面向带 Web GUI 的运行环境，不是 ACP 端的交互工具。安装后应确认插件启用、刷新现有 GUI，再到「设置 → 模型」查看页尾的「模型资料增强」。
 
@@ -116,7 +116,7 @@ APP_ROOT='D:/Users/Arthur/AppData/Local/Programs/DeepSeek Harness/resources/app.
 ELECTRON_RUN_AS_NODE=1 "$APP_EXE" dsh-model-enhance/test/runtime-integration.mjs "$APP_ROOT"
 ```
 
-该测试使用实际 Cordis、Typert Registry、Host Gateway、Client Remote、已安装 pi-ai 的 `Config` 和真实 `SettingsForms`；通过 `client.plugin(ui)` 启动真实客户端 fiber，而非用根上下文 / 普通对象直接调用 `apply`。设置描述、原生 schema 投影、revision 校验、volatile 路径校验、路径修改和写后读取均执行 DSH 真实代码；只有 `configEditor` 持久化边界保留在内存，LLM 为隔离 fixture，工程快照由包内文件读取。覆盖四个 Remote 端点、真实客户端作用域内取数 / 选择 / 匹配 / 预览、Host 保存与实际 SettingsForms 回读、JSON 边界、严格输入校验、单次 token 和卸载 / 重载，不安装插件、不修改真实 profile、不访问网络、不调用付费模型。
+该测试先使用已安装宿主的兼容性检查函数分别验证 `engines.dsh` 与协议 peer，复现旧声明对 rc.5 的拒绝，并确认未验证版本仍被阻止，不使用版本豁免。随后使用实际 Cordis、Typert Registry、Host Gateway、Client Remote、已安装 pi-ai 的 `Config` 和真实 `SettingsForms`；通过 `client.plugin(ui)` 启动真实客户端 fiber，而非用根上下文 / 普通对象直接调用 `apply`。设置描述、原生 schema 投影、revision 校验、volatile 路径校验、路径修改和写后读取均执行 DSH 真实代码；只有 `configEditor` 持久化边界保留在内存，LLM 为隔离 fixture，工程快照由包内文件读取。覆盖四个 Remote 端点、真实客户端作用域内取数 / 选择 / 匹配 / 预览、Host 保存与实际 SettingsForms 回读、JSON 边界、严格输入校验、单次 token 和卸载 / 重载，不安装插件、不修改真实 profile、不访问网络、不调用付费模型。
 
 已完成的验证包括内置快照 fail-closed、未知能力、图片能力三态展示、空 `input` 填充及双向覆盖确认、显式列表 / 模型覆盖写入、图片能力实际 SettingsForms 保存回读与幂等、名称歧义、只填空 / 覆盖、思考映射排除 off、已有 off 移除及幂等、版本冲突、能力变更重规划、读取与预览竞争、本地目录读取超时和禁止远端回退、卸载、Client 挂载生命周期及真实 Client → Gateway 调用链。0.1.1 虽在当前 GUI 注册入口成功，但用户验收发现取数报错；0.1.2 增加了真实 fiber 中的命名空间注入和交互回归。**真实 GUI 中的布局和所选 provider 已添加模型清单仍需用户验收；本插件不会测试上游推理调用。**
 
@@ -128,7 +128,9 @@ ELECTRON_RUN_AS_NODE=1 "$APP_EXE" dsh-model-enhance/test/runtime-integration.mjs
 
 ## 源码核对基线
 
-核对日期：2026-11-17；本机 DSH **0.2.2-rc.3**。参考源码 tag `dsh-v0.2.2-rc.3`，commit `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`，只读未修改。
+当前核对日期：2026-11-19；本机 DSH **0.2.2-rc.5**。参考源码 tag `dsh-v0.2.2-rc.5`，commit `9c2670d3bce5275e0d1610272958121af87787bb`，只读未修改。此前基线为 2026-11-17 的 rc.3（commit `38a6a5c965aa99ab525161efb7cc5cf1fe62fced`）；本次核对下列接口实现未变，并重新通过已安装 rc.5 的隔离测试。
+
+- [宿主兼容性检查](../ref/deepseek-harness/packages/boot/app-boot/src/plugin-compatibility.ts#L51-L80)：自有 `engines.dsh` 优先于 DSH peers；旧精确 rc.3 声明会阻止 rc.5。0.2.1 同步更新宿主和协议 peer 为已验证版本的精确并集，不依赖版本豁免。
 
 - [公开模型设置 Slot](../ref/deepseek-harness/packages/client/ui-settings-models/src/client/slot-contract.ts#L23-L57)：footer / provider-card，不提供原生草稿回调。
 - [pi-ai 模型与路由配置](../ref/deepseek-harness/packages/llm/llm-pi-ai/src/config.ts#L331-L385)：能力映射属于模型，默认 `reasoning` 属于路由。

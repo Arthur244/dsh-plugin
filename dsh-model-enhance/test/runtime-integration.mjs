@@ -11,6 +11,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 if (!process.argv[2]) throw new Error('Pass the installed dsh runtime directory as the first argument')
 const runtime = resolve(process.argv[2])
 const library = name => pathToFileURL(join(runtime, 'node_modules', name, 'lib', 'index.js')).href
+const { evaluatePluginCompatibility, getDshRuntimeVersion } = await import(library('@deepseek-ai/dsh-app-boot'))
+const runtimeVersion = getDshRuntimeVersion()
+const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
+// Check the same admission rule as the Host before the test-only peer resolver
+// can mask an obsolete manifest. An explicit engine otherwise hides peer drift.
+assert.equal(evaluatePluginCompatibility(manifest), undefined, `plugin must admit installed DSH ${runtimeVersion}`)
+const { engines, ...peerManifest } = manifest
+assert.equal(evaluatePluginCompatibility(peerManifest), undefined, 'DSH peer requirements must also admit the installed runtime')
+const protocolManifest = JSON.parse(await readFile(join(runtime, 'node_modules', '@deepseek-ai/dsh-typert-protocol', 'package.json'), 'utf8'))
+assert.equal(evaluatePluginCompatibility(peerManifest, {}, protocolManifest.version), undefined, 'installed protocol peer must satisfy its declared requirement')
+const oldIssue = evaluatePluginCompatibility({ ...manifest, engines: { dsh: '0.2.2-rc.3' } }, {}, '0.2.2-rc.5')
+assert.deepEqual(oldIssue.requirements, { 'engines.dsh': '0.2.2-rc.3' })
+assert.equal(oldIssue.exempted, false, 'reproduce the original rejection without granting any exemption')
+for (const unverified of ['0.2.2-rc.4', '0.2.2-rc.6', '0.2.2', '0.3.0']) {
+  assert.ok(evaluatePluginCompatibility(manifest, {}, unverified), `unverified DSH ${unverified} must remain blocked`)
+}
 const { Context, Service } = await import(library('@deepseek-ai/cordis'))
 const { TypertRegistry } = await import(library('@deepseek-ai/dsh-typert-registry'))
 const { TypertGatewayService } = await import(library('@deepseek-ai/dsh-api-gateway'))
@@ -225,7 +241,7 @@ try {
   await second
   assert.equal((await invoke('status')).catalog.available, true)
   await second.dispose()
-  console.log('PASS: installed rc.3 real pi-ai Config + SettingsForms + bundled catalog + local added-model matching + scoped Client controller + Host Gateway; four endpoints, image input from schema-default empty arrays through save/read-back, reasoning mappings without off, default selection deferred, revisions, strict validation, save/read-back, single-use token, unload/HMR cleanup. No live profile, network or model calls.')
+  console.log(`PASS: installed DSH ${runtimeVersion}; engine + protocol peer compatibility without exemptions; real pi-ai Config + SettingsForms + bundled catalog + local added-model matching + scoped Client controller + Host Gateway; four endpoints, image input from schema-default empty arrays through save/read-back, reasoning mappings without off, default selection deferred, revisions, strict validation, save/read-back, single-use token, unload/HMR cleanup. No live profile, network or model calls.`)
 } finally {
   peerControl.abort()
   await ctx.fiber.dispose()

@@ -145,7 +145,7 @@ test('late diagnostic service reads the completed history without re-running the
   await applying
   f.diagnostic()
   const status = await f.status()
-  assert.equal(status.version, '0.2.0')
+  assert.equal(status.version, '0.2.1')
   assert.equal(status.strategy, 'readiness-barrier')
   assert.equal(status.phase, 'released')
   assert.equal(status.result.reason, 'ready')
@@ -228,8 +228,8 @@ test('source no longer reads/writes overlay DOM, inline opacity or interaction l
 test('manifest exports, exact runtime version and display resources are complete', async () => {
   const manifest = JSON.parse(await read('package.json'))
   assert.equal(manifest.name, 'dsh-startup-overlay')
-  assert.equal(manifest.version, '0.2.0')
-  assert.equal(manifest.engines.dsh, '0.2.2-rc.3')
+  assert.equal(manifest.version, '0.2.1')
+  assert.equal(manifest.engines.dsh, '0.2.2-rc.3 || 0.2.2-rc.5')
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh.client.platform, 'web')
   for (const path of Object.values(manifest.exports).filter(path => !path.includes('*'))) {
@@ -240,7 +240,7 @@ test('manifest exports, exact runtime version and display resources are complete
     const { meta } = JSON.parse(await read(`locale/${locale}.json`))
     assert.ok(meta.title.length > 0)
     assert.ok(meta.description.includes('8'))
-    assert.ok(meta.description.includes('0.2.2-rc.3'))
+    for (const version of ['0.2.2-rc.3', '0.2.2-rc.5']) assert.ok(meta.description.includes(version))
   }
   const patch = await read('cordis.patch.yml')
   assert.match(patch, /id: dsh-startup-overlay\n\s+name: dsh-startup-overlay/)

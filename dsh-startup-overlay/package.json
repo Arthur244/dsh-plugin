@@ -1,6 +1,6 @@
 {
   "name": "dsh-startup-overlay",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "保持首次启动 loading，等待共享设置与账号首次状态后再挂载界面；8 秒内就绪即放行，错误、超时或卸载安全放行，不修改遮罩或交互锁。",
   "type": "module",
   "main": "index.js",
@@ -20,6 +20,6 @@
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": { "platform": "web", "inject": [] }
   },
-  "engines": { "dsh": "0.2.2-rc.3" },
+  "engines": { "dsh": "0.2.2-rc.3 || 0.2.2-rc.5" },
   "license": "MIT"
 }
