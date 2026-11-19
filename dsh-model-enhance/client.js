@@ -39,6 +39,25 @@ window.__ModuleLoader__.load({
         result: { mode: 'src-json' },
       })),
     }
+    // Adapt the existing Host string contract without requiring a Host/Client upgrade in lockstep.
+    const WARNING_KEYS = new Map([
+      ['Only models already available in DSH for this provider are listed. No provider model-discovery or inference request was made.', 'warnLocalModels'],
+      ['No valid model record was supplied.', 'warnInvalidRecord'],
+      ['maxTokens is the catalog output limit, not a recommended routine request budget.', 'warnOutputLimit'],
+      ['Maximum output is a catalog limit, not a recommended routine request budget.', 'warnOutputLimit'],
+      ['Source input modalities are unknown; existing image capability is preserved and no input setting is imported.', 'warnUnknownInput'],
+      ['Some source efforts have no verified protocol mapping; none is never converted to off.', 'warnUnmappedEfforts'],
+      ['This API has no verified direct reasoning-effort mapping; configure its wire values manually.', 'warnUnverifiedEffortApi'],
+      ['Reasoning is advertised, but no safe effort mapping could be recommended.', 'warnNoSafeEffort'],
+      ['Toggle, token-budget, or unknown reasoning options are informational; they are not converted into effort levels.', 'warnInformationalEffort'],
+      ['Source reasoning capability is unknown; no reasoning configuration is imported.', 'warnUnknownReasoning'],
+      ['Existing input modalities are preserved. To apply the catalog image capability, enable overwrite and confirm the preview.', 'warnPreservedInput'],
+      ['Non-reasoning capability is preserved as false.', 'warnNoReasoning'],
+      ['The existing off level is removed from the reasoning mapping; review the change before applying.', 'warnOffRemoved'],
+      ['No reliable non-off effort mapping is available; original reasoning capability is preserved and no level is invented.', 'warnPreservedReasoning'],
+      ['Default reasoning selection and repair are deferred (see TODO.md); provider and explicit session defaults are not changed or certified.', 'warnDefaultReasoning'],
+      ['Settings write completed, but read-back did not verify the expected fields. Do not blindly repeat it.', 'warnReadBack'],
+    ])
     const zh = {
       title: '模型资料增强', description: '匹配已添加模型，预览原厂推荐参数，确认后安全写入配置。',
       bundled: '工程内置', rules: '资料来源与注入规则', stepProvider: '选择服务商', stepMatch: '匹配模型', stepApply: '预览并应用',
@@ -61,7 +80,24 @@ window.__ModuleLoader__.load({
       inputField: '图片输入能力（input）', inputUnspecified: '未指定／继承', rawJson: '原始 JSON',
       selectModel: '查看推荐', more: '再显示 50 项', limited: '已限制列表渲染；请使用筛选缩小范围。', count: '当前显示／符合条件数量',
       overwrite: '允许替换已有字段（应用前需确认影响）', preview: '重新生成预览', previewTitle: '配置变更预览',
-      before: '当前值', after: '建议值', field: '字段', warnings: '注意事项', blockers: '阻止应用的原因',
+      before: '当前值', after: '建议值', field: '字段', blockers: '阻止应用的原因',
+      scanWarnings: '模型匹配注意事项', previewWarnings: '配置预览注意事项', resultWarnings: '保存结果注意事项',
+      warnLocalModels: '仅列出此服务商在 DSH 中已添加的模型，未请求上游模型清单或调用模型。',
+      warnInvalidRecord: '没有可用的模型资料记录。',
+      warnOutputLimit: 'maxTokens 是资料标注的输出上限，并非常规请求的推荐预算。',
+      warnUnknownInput: '资料未说明输入类型，不导入输入设置，并保留现有图片输入能力。',
+      warnUnmappedEfforts: '部分思考档位没有经过验证的协议映射；不会将 none 转换为 off。',
+      warnUnverifiedEffortApi: '此 API 没有经过验证的思考档位直通映射，请手动配置协议值。',
+      warnNoSafeEffort: '资料标注支持推理，但无法安全推荐思考档位映射。',
+      warnInformationalEffort: '推理开关、token 预算或未知选项仅供参考，不会转换为思考档位。',
+      warnUnknownReasoning: '资料未说明推理能力，不会导入推理配置。',
+      warnPreservedInput: '已保留现有输入类型。若要应用资料中的图片输入能力，请启用覆盖并确认预览。',
+      warnNoReasoning: '不支持推理的能力标记保留为 false。',
+      warnOffRemoved: '此变更会移除思考映射中的 off 档位，请核对后再应用。',
+      warnPreservedReasoning: '未找到可靠的非 off 档位映射；保留原有推理能力，不虚构档位。',
+      warnDefaultReasoning: '暂不处理默认思考档位的选择与修复（见 TODO.md）；不修改或核验服务商及显式会话默认值。',
+      warnReadBack: '设置已写入，但回读未能核对预期字段。请先检查，不要盲目重复写入。',
+      warnUnknown: '未识别的注意事项（原始详情）',
       confirm: '我已检查字段覆盖影响，确认应用此预览。', apply: '一键配置推荐参数', nothing: '没有字段变更。',
       savedVerified: '配置字段已保存并核对；远端模型调用未经验证。', savedUnverified: '配置已保存，但验证未通过；请检查警告，不要重复盲目写入。',
       notSaved: '配置未保存，请检查结果与警告。', readOnly: '该路由不可写', result: '应用结果', noPreview: '选择模型及原厂资料候选以预览推荐。',
@@ -88,7 +124,24 @@ window.__ModuleLoader__.load({
       inputField: 'Image input capability (input)', inputUnspecified: 'Unspecified / inherited', rawJson: 'Raw JSON',
       selectModel: 'View recommendation', more: 'Show 50 more', limited: 'List rendering is bounded. Narrow the results with the filter.', count: 'Shown / matching models',
       overwrite: 'Allow replacing existing fields (impact confirmation required before applying)', preview: 'Regenerate preview', previewTitle: 'Configuration preview',
-      before: 'Current value', after: 'Suggested value', field: 'Field', warnings: 'Warnings', blockers: 'Application blockers',
+      before: 'Current value', after: 'Suggested value', field: 'Field', blockers: 'Application blockers',
+      scanWarnings: 'Model matching warnings', previewWarnings: 'Configuration preview warnings', resultWarnings: 'Save result warnings',
+      warnLocalModels: 'Only models already added in DSH are listed. No upstream model list or inference was requested.',
+      warnInvalidRecord: 'No usable model metadata record was supplied.',
+      warnOutputLimit: 'maxTokens is the catalog output limit, not a recommended routine request budget.',
+      warnUnknownInput: 'The source does not specify input types. No input setting is imported, and existing image input is preserved.',
+      warnUnmappedEfforts: 'Some reasoning levels have no verified protocol mapping. none is never converted to off.',
+      warnUnverifiedEffortApi: 'This API has no verified direct reasoning-effort mapping. Configure its wire values manually.',
+      warnNoSafeEffort: 'The source advertises reasoning, but no safe reasoning-effort mapping could be recommended.',
+      warnInformationalEffort: 'Reasoning toggles, token budgets and unknown options are informational and are not converted into effort levels.',
+      warnUnknownReasoning: 'The source does not specify reasoning capability. No reasoning setting is imported.',
+      warnPreservedInput: 'Existing input types are preserved. To use the catalog image capability, enable overwrite and confirm the preview.',
+      warnNoReasoning: 'The non-reasoning flag remains false.',
+      warnOffRemoved: 'This change removes the off level from the reasoning mapping. Review it before applying.',
+      warnPreservedReasoning: 'No reliable non-off mapping is available. Existing reasoning capability is preserved and no level is invented.',
+      warnDefaultReasoning: 'Default reasoning selection and repair are deferred (see TODO.md). Provider and explicit session defaults are not changed or verified.',
+      warnReadBack: 'Settings were written, but read-back could not verify the expected fields. Inspect the result before writing again.',
+      warnUnknown: 'Unrecognized warning (original detail)',
       confirm: 'I reviewed the field-overwrite impact and confirm this preview.', apply: 'Apply recommended configuration', nothing: 'No field changes.',
       savedVerified: 'Configuration fields were saved and checked. Remote model calls were not verified.', savedUnverified: 'Configuration was saved, but verification failed. Check the warnings; do not blindly repeat the write.',
       notSaved: 'Configuration was not saved. Check the result and warnings.', readOnly: 'This route is read-only', result: 'Application result', noPreview: 'Choose a model and original-vendor candidate to preview recommendations.',
@@ -169,6 +222,9 @@ window.__ModuleLoader__.load({
 [data-dme] .dme-notice-error { --dme-notice-tone: var(--dsw-alias-state-error-primary); }
 [data-dme] .dme-notice-warning { --dme-notice-tone: var(--dsw-alias-state-warn-primary); }
 [data-dme] .dme-notice-success { --dme-notice-tone: var(--dsw-alias-state-success-primary); }
+[data-dme] .dme-warning { display: inline-grid; flex: none; --dme-warning-bg: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 8%, var(--dsw-alias-bg-layer-1)); }
+[data-dme] button.dme-warning-trigger, [data-dme] button.dme-warning-trigger:hover:not(:disabled), [data-dme] button.dme-warning-trigger:active:not(:disabled) { display: grid; place-items: center; inline-size: 28px; min-block-size: 28px; block-size: 28px; padding: 0; border: 1px solid color-mix(in srgb, var(--dsw-alias-state-warn-primary) 45%, var(--dsw-alias-border-l1)); border-radius: 50%; color: var(--dsw-alias-state-warn-primary); background: var(--dme-warning-bg); }
+[data-dme] .dme-warning-popover { position: fixed; inset: auto; margin: 4px 8px; position-area: block-end span-inline-end; position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline, block-end span-all, block-start span-all; position-visibility: anchors-visible; justify-self: safe start; align-self: start; inline-size: min(380px, calc(100vw - 24px)); max-block-size: min(320px, 40dvh); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; background: var(--dme-warning-bg); box-shadow: var(--dsw-elevation-panel); }
 `
 
     const text = (value) => {
@@ -350,6 +406,60 @@ window.__ModuleLoader__.load({
         shield: 'm12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6',
       }[name] }))
 
+    function WarningNotice({ t, label, values }) {
+      const id = React.useId()
+      const panel = React.useRef(null)
+      const trigger = React.useRef(null)
+      const closeTimer = React.useRef(null)
+      const pinned = React.useRef(false)
+      const cancelClose = () => clearTimeout(closeTimer.current)
+      React.useEffect(() => () => clearTimeout(closeTimer.current), [])
+      const warnings = [...new Set(values.slice(0, 100).map((value) => {
+        const key = WARNING_KEYS.get(value)
+        return key ? t(key) : `${t('warnUnknown')}: ${text(value)}`
+      }))]
+      const isOpen = () => panel.current?.matches(':popover-open')
+      const show = () => {
+        cancelClose()
+        if (isOpen()) return
+        pinned.current = false
+        panel.current?.showPopover?.({ source: trigger.current })
+      }
+      const close = () => {
+        cancelClose()
+        pinned.current = false
+        if (isOpen()) panel.current.hidePopover()
+      }
+      const anchorName = `--dme-warning-${id.replace(/[^a-zA-Z0-9_-]/g, '')}`
+      return h('div', {
+        className: 'dme-warning',
+        onPointerEnter: (event) => { if (event.pointerType !== 'touch') show() },
+        onPointerLeave: (event) => {
+          if (event.pointerType === 'touch') return
+          cancelClose()
+          // Allow the pointer to cross the gap to the top-layer popover.
+          closeTimer.current = setTimeout(() => {
+            if (!pinned.current && !trigger.current?.matches(':focus-visible') && !panel.current?.matches(':focus-within')) close()
+          }, 180)
+        },
+        onBlur: (event) => { if (!event.currentTarget.contains(event.relatedTarget)) close() },
+      }, h('button', {
+        ref: trigger, type: 'button', className: 'dme-warning-trigger', popovertarget: id,
+        'aria-label': `${t(label)} (${warnings.length})`, style: { anchorName },
+        onFocus: (event) => {
+          if (event.currentTarget.matches(':focus-visible') && !panel.current?.contains(event.relatedTarget)) show()
+        },
+        onClick: (event) => {
+          event.preventDefault()
+          if (isOpen() && pinned.current) close()
+          else { show(); pinned.current = true }
+        },
+      }, h('span', { 'aria-hidden': true }, '!')),
+      h('div', { ref: panel, id, popover: 'auto', role: 'region', 'aria-label': t(label), tabIndex: 0,
+        className: 'dme-notice dme-notice-warning dme-warning-popover', style: { positionAnchor: anchorName } },
+      h('strong', null, t(label)), h('ul', null, warnings.map((message) => h('li', { key: message }, message)))))
+    }
+
     function Panel({ t, useEnhance, actions }) {
       const state = useEnhance((snapshot) => snapshot)
       const busy = Boolean(state.loading)
@@ -385,9 +495,11 @@ window.__ModuleLoader__.load({
         h('div', null, t(imageInputState(value) === 'imageUnknown' ? 'inputUnspecified' : imageInputState(value))),
         h('div', { className: 'dme-muted' }, t('rawJson'), ': ', h('code', null, text(value))))
       const button = (key, fn, disabled = busy, primary = false) => h('button', { type: 'button', ref: key === 'preview' ? previewButton : undefined, className: primary ? 'dme-primary' : undefined, disabled, onClick: () => { void fn() } }, t(key))
-      const notices = (key, values) => values?.length ? h('div', { className: `dme-notice dme-notice-${key === 'blockers' ? 'error' : 'warning'}`, role: key === 'blockers' ? 'alert' : undefined }, h('strong', null, t(key)), h('ul', null, values.slice(0, 100).map((value, index) => h('li', { key: index }, text(value))))) : null
-      const scopeSummary = h('div', { className: 'dme-summary dme-values' }, h('strong', null, text(route?.displayName ?? state.provider)), ' · ', h('code', null, text(state.provider)),
-        h('p', { className: 'dme-muted' }, t('source'), ': ', state.sourceProvider || t('autoSource')))
+      const warningNotice = (label, values, key = label) => values?.length ? h(WarningNotice, { t, label, key, values }) : null
+      const scopeSummary = h('div', { className: 'dme-summary dme-values dme-toolbar' },
+        h('div', null, h('strong', null, text(route?.displayName ?? state.provider)), ' · ', h('code', null, text(state.provider)),
+          h('p', { className: 'dme-muted' }, t('source'), ': ', state.sourceProvider || t('autoSource'))),
+        warningNotice('scanWarnings', state.scan?.warnings, `scan-${view}-${state.modelId}`))
       const diff = (change) => {
         const isInput = change.field === `${state.modelId}.input`
         const offRemoved = change.field === `${state.modelId}.reasoningEfforts` && change.before && typeof change.before === 'object'
@@ -428,7 +540,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('localOnly')), button('scan', () => actions.scan(), busy || !state.provider || !catalog?.available, true))) : null,
         view === 'results' ? h('div', { className: 'dme-stack' },
           h('div', { className: 'dme-toolbar' }, h('h4', { ref: heading, tabIndex: -1 }, t('resultsTitle')), button('changeProvider', () => actions.editSelection())),
-          scopeSummary, notices('warnings', state.scan.warnings), h('p', { className: 'dme-muted' }, t('resultsHint')),
+          scopeSummary, h('p', { className: 'dme-muted' }, t('resultsHint')),
           h('label', null, t('filter'), h('input', { type: 'search', value: state.filter, onChange: (event) => actions.setFilter(event.target.value) })),
           h('p', { role: 'status', className: 'dme-muted' }, t('count'), ': ', visible.length, ' / ', matching.length),
           matching.length === 0 ? h('p', { className: 'dme-empty' }, t(state.scan.models.length === 0 ? 'noAddedModels' : 'noModels')) : null,
@@ -438,7 +550,6 @@ window.__ModuleLoader__.load({
         model ? h('div', { className: 'dme-stack' },
           h('div', { className: 'dme-toolbar' }, h('h4', { ref: heading, tabIndex: -1, className: 'dme-values' }, text(model.name), ' — ', text(model.id)),
             button('backModels', () => actions.backToModels())), scopeSummary,
-          notices('warnings', state.scan.warnings),
           view === 'detail' ? h('div', { className: 'dme-stack' },
             h('div', { className: 'dme-card dme-stack' },
               h('div', { className: 'dme-title-line' }, badge(model), h('p', { className: 'dme-muted' }, t('previewHint'))),
@@ -453,18 +564,23 @@ window.__ModuleLoader__.load({
                 h('span', null, t('overwrite'), h('small', { className: 'dme-muted' }, t('overwriteHint')))),
               h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('localOnly')), button('preview', () => actions.preview(), busy || !state.sourceKey))),
             !preview ? h('p', { className: 'dme-muted' }, t('noPreview')) : h('div', { className: 'dme-stack' },
-              h('div', { className: 'dme-preview' }, h('div', { className: 'dme-preview-header dme-toolbar' }, h('h4', null, t('previewTitle')), h('span', { className: 'dme-badge' }, preview.changes.length, ' ', t('changes'))),
+              h('div', { className: 'dme-preview' }, h('div', { className: 'dme-preview-header dme-toolbar' }, h('h4', null, t('previewTitle')),
+                h('div', { className: 'dme-title-line' }, h('span', { className: 'dme-badge' }, preview.changes.length, ' ', t('changes')),
+                  warningNotice('previewWarnings', preview.warnings, preview.token))),
                 preview.changes.length ? preview.changes.slice(0, MAX_VISIBLE).map(diff) : h('p', { className: 'dme-empty' }, t('nothing'))),
               preview.changes.length > MAX_VISIBLE ? h('p', { className: 'dme-muted' }, t('limited')) : null,
-              notices('warnings', preview.warnings), notices('blockers', preview.blockers),
+              preview.blockers.length ? h('div', { className: 'dme-notice dme-notice-error', role: 'alert' }, h('strong', null, t('blockers')),
+                h('ul', null, preview.blockers.slice(0, 100).map((value, index) => h('li', { key: index }, text(value))))) : null,
               h('div', { className: 'dme-confirm dme-stack' },
                 preview.requiresConfirmation ? h('label', { className: 'dme-check' }, h('input', { type: 'checkbox', checked: state.confirmed, disabled: busy, onChange: (event) => actions.confirm(event.target.checked) }), t('confirm')) : null,
                 h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, icon('shield'), ' ', t('safeWrite')),
                   button('apply', () => actions.apply(), busy || !route?.writable || !preview.canApply || preview.blockers.length > 0 || (preview.requiresConfirmation && !state.confirmed), true))))) : null,
           state.result ? h('div', { className: 'dme-stack' },
-            h('div', { role: 'status', className: `dme-notice dme-notice-${state.result.saved && state.result.verified ? 'success' : 'warning'}`, 'aria-live': 'polite' },
-              h('h4', null, t(state.result.saved && state.result.verified ? 'savedTitle' : 'unverifiedTitle')),
-              h('p', null, t(state.result.saved ? state.result.verified ? 'savedVerified' : 'savedUnverified' : 'notSaved')), notices('warnings', state.result.warnings)),
+            h('div', { className: `dme-notice dme-toolbar dme-notice-${state.result.saved && state.result.verified ? 'success' : 'warning'}` },
+              h('div', { role: 'status', 'aria-live': 'polite' },
+                h('h4', null, t(state.result.saved && state.result.verified ? 'savedTitle' : 'unverifiedTitle')),
+                h('p', null, t(state.result.saved ? state.result.verified ? 'savedVerified' : 'savedUnverified' : 'notSaved'))),
+              warningNotice('resultWarnings', state.result.warnings)),
             h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('safeWrite')), button('rescan', () => actions.scan(), busy, true))) : null) : null)
     }
 

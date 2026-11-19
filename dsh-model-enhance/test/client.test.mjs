@@ -32,23 +32,29 @@ async function harness(overrides = {}) {
   let loaded, registrationRemoved = 0, localeRemoved = 0, injectRemoved = 0, remoteRemoved = 0
   const contributions = []
   const required = []
-  const hookValues = []
+  const frames = new Map()
   const focusEvents = []
-  let hookIndex = 0, pendingEffects = []
+  let hookValues, hookIndex, pendingEffects, lastId = 0
   const React = {
     createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter((value) => value !== null && value !== undefined && value !== false) }),
-    useRef: (initial) => {
-      const index = hookIndex++
-      return hookValues[index] ??= { current: initial }
-    },
+    useRef: (initial) => hookValues[hookIndex++] ??= { current: initial },
+    useId: () => hookValues[hookIndex++] ??= `:test-${++lastId}:`,
     useEffect: (effect, deps) => {
       const index = hookIndex++
       const previous = hookValues[index]
-      if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) pendingEffects.push(effect)
-      hookValues[index] = deps
+      if (!previous || deps.some((value, i) => !Object.is(value, previous.deps[i]))) {
+        const next = { deps }
+        pendingEffects.push(() => { previous?.cleanup?.(); next.cleanup = effect() })
+        hookValues[index] = next
+      }
     },
   }
-  const scope = { window: { __ModuleLoader__: { load: (entry) => { loaded = entry } } } }
+  const scope = {
+    window: { __ModuleLoader__: { load: (entry) => { loaded = entry } } },
+    setTimeout: overrides.timers?.setTimeout ?? setTimeout,
+    clearTimeout: overrides.timers?.clearTimeout ?? clearTimeout,
+  }
+  const clearFrame = (frame) => { for (const hook of frame) hook?.cleanup?.() }
   vm.runInNewContext(source, scope, { filename: 'client.js' })
   assert.equal(loaded.id, 'dsh-model-enhance')
   assert.equal(required.length, 0, 'factory stays lazy')
@@ -124,6 +130,8 @@ async function harness(overrides = {}) {
     requests, registrations, contributions,
     dispose: () => {
       const pending = []
+      for (const frame of frames.values()) clearFrame(frame)
+      frames.clear()
       while (effects.length) pending.push(effects.pop()())
       return Promise.all(pending)
     },
@@ -137,13 +145,27 @@ async function harness(overrides = {}) {
   const actions = injected.actions
   const render = (language = 'en') => {
     const dictionary = dictionaries.get('settings.dsh-model-enhance')[language]
-    hookIndex = 0
     pendingEffects = []
-    const tree = registration.Component({
+    const rendered = new Set()
+    const expand = (node, path) => {
+      if (!node || typeof node !== 'object') return node
+      if (typeof node.type === 'function') {
+        rendered.add(path)
+        if (!frames.has(path)) frames.set(path, [])
+        hookValues = frames.get(path)
+        hookIndex = 0
+        return expand(node.type(node.props), `${path}/output`)
+      }
+      return { ...node, children: node.children.map((child, index) => expand(child, `${path}/${child?.props?.key ?? index}`)) }
+    }
+    const tree = expand(React.createElement(registration.Component, {
       ...injected,
       useEnhance: (selector) => selector(injected.hooks.enhance.getSnapshot()),
       t: (key) => { assert.ok(Object.hasOwn(dictionary, key), `Missing locale key: ${key}`); return dictionary[key] },
-    })
+    }), 'panel')
+    for (const [path, frame] of frames) {
+      if (!rendered.has(path)) { clearFrame(frame); frames.delete(path) }
+    }
     for (const node of nodes(tree)) {
       if (node.props.ref) node.props.ref.current = { focus: () => focusEvents.push(allText(node)) }
     }
@@ -425,6 +447,12 @@ test('theme CSS scopes native controls, popups and interaction states to live DS
   assert.match(rule('[data-dme] .dme-diff-grid'), /auto-fit.*minmax\(min\(100%, 230px\)/)
   assert.match(rule('[data-dme] .dme-values'), /overflow-wrap:\s*anywhere/)
   assert.doesNotMatch(rule('[data-dme] .dme-header'), /display:\s*none/)
+  assert.match(rule('[data-dme] .dme-warning'), /state-warn-primary\) 8%, var\(--dsw-alias-bg-layer-1\)/)
+  assert.match(rule('[data-dme] button.dme-warning-trigger'), /border-radius:\s*50%.*background:\s*var\(--dme-warning-bg\)/)
+  const popover = rule('[data-dme] .dme-warning-popover')
+  assert.match(popover, /position-try-fallbacks:.*flip-block/)
+  assert.match(popover, /max-block-size:.*dvh.*overflow:\s*auto.*overflow-wrap:\s*anywhere/)
+  assert.doesNotMatch(popover, /display:/, 'native popover controls default visibility')
   for (const [kind, token] of [['error', 'error'], ['warning', 'warn'], ['success', 'success']]) {
     assert.ok(rule(`[data-dme] .dme-notice-${kind}`).includes(`var(--dsw-alias-state-${token}-primary)`))
   }
@@ -445,8 +473,130 @@ test('detail alerts and saved result expose distinct semantic theme states', asy
     assert.ok(tree.some((node) => node.props.className?.split(' ').includes(`dme-notice-${kind}`)), kind)
   }
   h.actions.publish({ result: { saved: true, verified: true, warnings: [] } })
-  assert.ok(nodes(h.render()).some((node) => node.props.role === 'status' && node.props.className?.includes('dme-notice-success')))
+  assert.ok(nodes(h.render()).some((node) => node.props.className?.includes('dme-notice-success') && nodes(node).some((child) => child.props.role === 'status')))
   assert.doesNotMatch(allText(h.render()), /Default reasoning status/)
+  await h.dispose()
+})
+
+test('scan, preview and save warnings follow locale, deduplicate known language and preserve unknown diagnostics', async () => {
+  const files = await Promise.all(['catalog.js', 'planner.js', 'service.js'].map((file) => readFile(new URL(`../core/${file}`, import.meta.url), 'utf8')))
+  const hostWarnings = files.flatMap((file) => [...file.matchAll(/(?:warnings\.push\(|warnings: \[)'([^']+)'/g)].map((match) => match[1]))
+  const scanWarning = hostWarnings.find((value) => value.startsWith('Only models'))
+  const resultWarning = hostWarnings.find((value) => value.startsWith('Settings write completed'))
+  const previewWarnings = hostWarnings.filter((value) => value !== scanWarning && value !== resultWarning)
+  assert.ok(scanWarning && resultWarning && previewWarnings.length > 0)
+  const h = await harness({
+    scan: async () => ({ ok: true, value: { ...scan(), warnings: [scanWarning] } }),
+    preview: async () => ({ ok: true, value: preview({ warnings: [...previewWarnings, 'future warning'] }) }),
+    apply: async () => ({ ok: true, value: { saved: true, verified: false, warnings: [resultWarning, ...previewWarnings] } }),
+  })
+  const byClass = (tree, name) => nodes(tree).filter((node) => node.props.className?.split(' ').includes(name))
+  const panels = (language) => byClass(h.render(language), 'dme-warning-popover')
+  const checkCh = (text) => {
+    assert.match(text, /[\u3400-\u9fff]/u)
+    for (const value of hostWarnings) assert.ok(!text.includes(value), value)
+  }
+  await flush()
+  assert.equal(panels('zh').length, 0, 'do not render empty icons')
+  h.actions.setProvider('target')
+  await h.actions.scan()
+  assert.match(allText(panels('zh')[0]), /模型匹配注意事项.*未请求上游模型清单或调用模型/)
+  assert.match(allText(panels('en')[0]), /Model matching warnings.*No upstream model list or inference/)
+  h.actions.selectModel('wire-id')
+  await flush()
+  const [scanPanel, previewPanel] = panels('zh')
+  assert.match(allText(scanPanel), /模型匹配注意事项/)
+  assert.match(allText(previewPanel), /配置预览注意事项/)
+  const localized = nodes(previewPanel).filter((node) => node.type === 'li').map(allText)
+  assert.equal(localized.length, previewWarnings.length, 'two output-limit variants deduped, one unknown appended')
+  assert.equal(localized.filter((value) => value.startsWith('maxTokens')).length, 1)
+  assert.match(localized.at(-1), /未识别的注意事项.*future warning/)
+  localized.forEach(checkCh)
+  const beforeSave = h.render('zh')
+  for (const container of byClass(beforeSave, 'dme-warning')) {
+    assert.equal(allText(container.children[0]), '!')
+    assert.equal(container.children[1].props.popover, 'auto')
+    assert.equal(container.children[0].props.popovertarget, container.children[1].props.id)
+  }
+  assert.equal(new Set(byClass(beforeSave, 'dme-warning-popover').map((node) => node.props.id)).size, 2)
+  await h.actions.apply()
+  const saved = h.render('zh')
+  const savePanel = panels('zh')[1]
+  assert.match(allText(savePanel), /保存结果注意事项.*回读未能核对预期字段/)
+  checkCh(allText(savePanel))
+  assert.equal(byClass(saved, 'dme-warning-popover').some((node) => node.props.id === previewPanel.props.id), false)
+  assert.ok(nodes(saved).some((node) => node.props.role === 'status' && /配置已保存，但验证未通过/.test(allText(node)) && !nodes(node).some((child) => child.props.popover)))
+  await h.dispose()
+})
+
+test('warning event handlers honor hover grace, keyboard focus, touch, native dismissal and unmount cleanup', async () => {
+  const scheduled = new Map()
+  let job = 0
+  const timers = { setTimeout: (fn) => { scheduled.set(++job, fn); return job }, clearTimeout: (id) => scheduled.delete(id) }
+  const advance = () => { const callbacks = [...scheduled.values()]; scheduled.clear(); callbacks.forEach((fn) => fn()) }
+  const h = await harness({ timers, preview: async () => ({ ok: true, value: preview({ warnings: ['fixture warning'] }) }) })
+  await choose(h)
+  const tree = h.render('zh')
+  const group = nodes(tree).find((node) => node.props.className === 'dme-warning')
+  const [button, popup] = group.children
+  assert.equal(button.type, 'button')
+  assert.equal(button.props['aria-label'], '配置预览注意事项 (1)')
+  assert.equal(popup.props.tabIndex, 0)
+  let opened = false, keyboard = false, inside = false
+  const anchor = { matches: (selector) => selector === ':focus-visible' && keyboard }
+  const panel = {
+    matches: (selector) => selector === ':popover-open' ? opened : selector === ':focus-within' && inside,
+    showPopover: ({ source }) => { assert.equal(source, anchor); opened = true },
+    hidePopover: () => { opened = false },
+    contains: (target) => target === panel,
+  }
+  button.props.ref.current = anchor
+  popup.props.ref.current = panel
+  const mouse = { pointerType: 'mouse' }
+  const touch = { pointerType: 'touch' }
+  const click = { preventDefault() {} }
+  const focus = (relatedTarget = null) => button.props.onFocus({ currentTarget: anchor, relatedTarget })
+  group.props.onPointerEnter(mouse)
+  assert.equal(opened, true)
+  group.props.onPointerLeave(mouse)
+  assert.equal(opened, true, 'give the pointer time to enter the popover')
+  group.props.onPointerEnter(mouse)
+  advance()
+  assert.equal(opened, true, 'popover content can be hovered')
+  group.props.onPointerLeave(mouse)
+  advance()
+  assert.equal(opened, false)
+  group.props.onPointerEnter(touch)
+  assert.equal(opened, false)
+  button.props.onClick(click)
+  assert.equal(opened, true)
+  group.props.onPointerLeave(mouse)
+  advance()
+  assert.equal(opened, true, 'click pins until dismissed')
+  button.props.onClick(click)
+  assert.equal(opened, false)
+  keyboard = true
+  focus()
+  assert.equal(opened, true)
+  group.props.onPointerLeave(mouse)
+  advance()
+  assert.equal(opened, true, 'keyboard focus is not dismissed by unrelated pointer movement')
+  const currentTarget = { contains: (target) => target === panel }
+  inside = true
+  group.props.onBlur({ currentTarget, relatedTarget: panel })
+  assert.equal(opened, true)
+  opened = false // Simulate native Escape dismissing the auto popover.
+  inside = false
+  focus(panel)
+  assert.equal(opened, false, 'native focus restoration must not reopen it')
+  focus()
+  group.props.onBlur({ currentTarget, relatedTarget: null })
+  assert.equal(opened, false, 'tabbing out dismisses the popover')
+  group.props.onPointerLeave(mouse)
+  assert.equal(scheduled.size, 1)
+  h.actions.backToModels()
+  h.render()
+  assert.equal(scheduled.size, 0)
   await h.dispose()
 })
 
@@ -781,7 +931,8 @@ test('save result has three distinct states and returning reads a fresh model sn
     const tree = h.render()
     assert.match(allText(tree), message)
     assert.match(allText(tree), /Result details/)
-    assert.ok(nodes(tree).some((node) => node.props.role === 'status' && node.props.className?.includes(`dme-notice-${tone}`)))
+    assert.ok(nodes(tree).some((node) => node.props.className?.split(' ').includes(`dme-notice-${tone}`)
+      && nodes(node).some((child) => child.props.role === 'status' && message.test(allText(child)))))
     assert.equal(nodes(tree).some((node) => node.type === 'button' && allText(node) === 'Apply recommended configuration'), false)
     assert.equal(nodes(tree).some((node) => node.type === 'select'), false)
     assert.ok(nodes(tree).some((node) => node.type === 'button' && allText(node) === 'Read latest models'))
