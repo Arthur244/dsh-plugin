@@ -1,0 +1,45 @@
+{
+  "name": "dsh-model-enhance",
+  "version": "0.2.0",
+  "description": "工程内置原厂模型资料、已添加模型匹配及受控一键配置；思考档位不含 off。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "protocol.js",
+    "core/*.js",
+    "data",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "TODO.md"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check index.js && node --check client.js && node --check protocol.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": []
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3"
+  },
+  "engines": {
+    "dsh": "0.2.2-rc.3"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "description": "Explicit first-party provider and model-family inclusion policy. A models.dev record remains community-compiled metadata, not vendor endorsement.",
+  "vendors": [
+    { "id": "openai", "name": "OpenAI", "website": "https://openai.com", "prefixes": ["gpt-", "chatgpt-", "o1", "o3", "o4", "codex-", "computer-use-"] },
+    { "id": "anthropic", "name": "Anthropic", "website": "https://anthropic.com", "prefixes": ["claude-"] },
+    { "id": "google", "name": "Google", "website": "https://ai.google.dev", "prefixes": ["gemini-", "gemma-"] },
+    { "id": "deepseek", "name": "DeepSeek", "website": "https://deepseek.com", "prefixes": ["deepseek-"] },
+    { "id": "xai", "name": "xAI", "website": "https://x.ai", "prefixes": ["grok-"] },
+    { "id": "mistral", "name": "Mistral AI", "website": "https://mistral.ai", "prefixes": ["mistral-", "magistral-", "ministral-", "codestral-", "devstral-", "pixtral-", "open-mistral-", "open-mixtral-"] },
+    { "id": "cohere", "name": "Cohere", "website": "https://cohere.com", "prefixes": ["command-"] },
+    { "id": "moonshotai", "name": "Moonshot AI", "website": "https://moonshot.ai", "prefixes": ["kimi-", "moonshot-"] },
+    { "id": "zai", "name": "Z.ai", "website": "https://z.ai", "prefixes": ["glm-"] },
+    { "id": "minimax", "name": "MiniMax", "website": "https://minimax.io", "prefixes": ["MiniMax-", "minimax-"] },
+    { "id": "alibaba", "name": "Alibaba / Qwen", "website": "https://qwen.ai", "prefixes": ["qwen", "qwq-", "qvq-"] },
+    { "id": "meta", "name": "Meta", "website": "https://dev.meta.ai", "prefixes": ["muse-", "llama-"] },
+    { "id": "nvidia", "name": "NVIDIA", "website": "https://docs.api.nvidia.com/nim/", "prefixes": ["nvidia/"] },
+    { "id": "tencent-tokenhub", "name": "Tencent / Hunyuan", "website": "https://cloud.tencent.com", "prefixes": ["hy", "hunyuan-"] },
+    { "id": "stepfun", "name": "StepFun", "website": "https://stepfun.com", "prefixes": ["step-"] },
+    { "id": "ai21", "name": "AI21 Labs", "website": "https://ai21.com", "prefixes": ["jamba-", "jamba"] },
+    { "id": "xiaomi", "name": "Xiaomi", "website": "https://platform.xiaomimimo.com", "prefixes": ["mimo-"] },
+    { "id": "inception", "name": "Inception", "website": "https://inceptionlabs.ai", "prefixes": ["mercury"] },
+    { "id": "perplexity", "name": "Perplexity", "website": "https://perplexity.ai", "prefixes": ["sonar"] }
+  ]
+}

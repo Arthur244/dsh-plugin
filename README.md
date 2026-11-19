@@ -40,6 +40,7 @@ _A personal collection of plugins for [DeepSeek Harness](https://github.com/deep
 | [`dsh-auto-review-model-override`](./dsh-auto-review-model-override) | 为官方 Auto review 单独指定审查模型，并给审查链路补上超时 / 重试 / 降级 / 兜底 | desktop | ✅ 可用 |
 | [`dsh-startup-overlay`](<./dsh-startup-overlay/README.md>) | 保留首次 loading，以最多 8 秒的就绪等待衔接设置与账号首帧；异常放行，不改交互锁 | desktop | 🧪 重启主路径已验证 |
 | [`dsh-agent-config`](./dsh-agent-config) | 统一管理技能 / 子代理 / 规则三类配置：来源分组、搜索、详情、逐项启停 | —— | 🚧 设计草案 |
+| [`dsh-model-enhance`](<./dsh-model-enhance/README.md>) | 使用工程内置原厂资料匹配已添加模型，预览并安全注入能力与思考档位（不含 off）；默认思考档位暂缓 | desktop | 🧪 已实现，隔离验证通过，待实机验收 |
 
 - **`dsh-a2d-workspace`**（0.1.0）：解决「Zed 里开的会话在桌面端全都堆在 Ungrouped」的问题。启动时、每次 `session/created`、以及每 30s 定时扫描，把没有归属的根会话按 cwd 挂进（或新建）对应工作区；幂等，不会覆盖你改过名的工作区标题。详见 [插件 README](./dsh-a2d-workspace/README.md)。
 - **`dsh-autorevivw-hold`**（0.2.0）：在权限设置行追加「自动审查」选项（仅当 Host 的 Auto 集成可用时出现），同时启用官方 `@deepseek-ai/dsh-experimental-auto-review`。选择后由 Host 仅在全新主代理初始化时应用 Auto，不覆盖子代理的 `Auto + never` 或恢复会话的权限；风险确认可勾选「以后不再显示」并持久记忆。详见 [插件 README](./dsh-autorevivw-hold/README.md)。
@@ -230,6 +231,14 @@ dsh-plugin/
 ├── dsh-agent-config/         # 设计中，目前只有 doc/design.md
 │   ├── doc/design.md
 │   └── README.md             # 状态与设计稿入口
+├── dsh-model-enhance/        # 插件：模型资料缓存、匹配与安全参数注入
+│   ├── package.json / cordis.patch.yml
+│   ├── index.js / protocol.js # Host 服务 / 严格 Remote 契约
+│   ├── client.js             # 模型设置页 footer 入口
+│   ├── core/                 # 目录、缓存、规划与写入控制器
+│   ├── test/                 # 离线回归与运行库隔离验证
+│   ├── locale/ / icon.svg
+│   └── README.md             # 安装、用法、安全边界与验收状态
 ├── docs/                     # 仓库级调研与踩坑文档
 ├── asset/                    # 文档配图（README 图片统一放这里）
 ├── ref/                      # submodule：只读参考仓库；deepseek-harness 即 DSH 本体源码
