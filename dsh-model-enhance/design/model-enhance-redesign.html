@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>模型资料增强 · 视觉重设计预览</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #181818;
+      --modal: #242424;
+      --card: #292929;
+      --card-hover: #2e2e2e;
+      --module: #202020;
+      --module-raised: #262626;
+      --text: #ededed;
+      --text-secondary: #b5b5b5;
+      --text-tertiary: #818181;
+      --border: rgba(255, 255, 255, .085);
+      --border-strong: rgba(255, 255, 255, .15);
+      --border-emphasis: rgba(255, 255, 255, .25);
+      --success: #51c582;
+      --success-bg: rgba(81, 197, 130, .09);
+      --warning: #d7aa52;
+      --warning-bg: rgba(215, 170, 82, .085);
+      --danger: #df7777;
+      --danger-bg: rgba(223, 119, 119, .08);
+      --radius-xl: 14px;
+      --radius-lg: 12px;
+      --radius-md: 8px;
+      --radius-sm: 6px;
+      --shadow: 0 28px 90px rgba(0, 0, 0, .38);
+    }
+
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-width: 320px;
+      background:
+        radial-gradient(circle at 50% -20%, rgba(255, 255, 255, .04), transparent 35%),
+        var(--page);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+    }
+    button, input, select { font: inherit; }
+    button, select, input { color-scheme: dark; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; }
+    button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 2px solid rgba(237, 237, 237, .8);
+      outline-offset: 2px;
+    }
+    .icon {
+      width: 16px;
+      height: 16px;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .icon-lg { width: 20px; height: 20px; }
+    .muted { color: var(--text-secondary); }
+    .tertiary { color: var(--text-tertiary); }
+    .code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+
+    .preview-header {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+      padding: 30px 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+    .preview-brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .preview-mark {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--border-strong);
+      border-radius: 11px;
+      background: var(--card);
+      color: var(--text-secondary);
+    }
+    .preview-brand h1 { margin: 0; font-size: 15px; line-height: 22px; font-weight: 600; }
+    .preview-brand p { margin: 1px 0 0; color: var(--text-tertiary); font-size: 12px; }
+    .preview-tag {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 9px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-tertiary);
+      font-size: 11px;
+    }
+    .preview-tag::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--success); }
+
+    .state-switcher {
+      width: min(800px, calc(100% - 40px));
+      margin: 0 auto 18px;
+      padding: 5px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(32, 32, 32, .82);
+    }
+    .state-tab {
+      min-height: 42px;
+      padding: 7px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text-tertiary);
+      font-size: 12px;
+      transition: background 140ms ease, color 140ms ease;
+    }
+    .state-tab:hover { color: var(--text-secondary); background: rgba(255, 255, 255, .035); }
+    .state-tab.active { color: var(--text); background: #343434; box-shadow: 0 1px 4px rgba(0, 0, 0, .18); }
+    .state-index {
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 18px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      font-size: 10px;
+      opacity: .65;
+    }
+
+    .settings-modal {
+      width: min(800px, calc(100% - 40px));
+      margin: 0 auto 54px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--modal);
+      box-shadow: var(--shadow);
+    }
+    .modal-topbar {
+      min-height: 68px;
+      padding: 18px 26px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-topbar h2 { margin: 0; font-size: 17px; font-weight: 550; letter-spacing: .01em; }
+    .modal-topbar .top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .modal-body { padding: 22px 26px 30px; }
+    .native-intro { margin: 0 0 16px; color: var(--text-tertiary); font-size: 13px; }
+
+    .button {
+      min-height: 36px;
+      padding: 0 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid transparent;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 100ms ease;
+    }
+    .button:active:not(:disabled) { transform: translateY(1px); }
+    .button-primary { background: #e6e6e6; color: #202020; border-color: #e6e6e6; }
+    .button-primary:hover:not(:disabled) { background: #fff; border-color: #fff; }
+    .button-primary:disabled { background: #343434; border-color: #343434; color: #777; }
+    .button-secondary { background: transparent; color: var(--text); border-color: var(--border-strong); }
+    .button-secondary:hover:not(:disabled) { background: rgba(255, 255, 255, .055); border-color: var(--border-emphasis); }
+    .button-quiet { background: transparent; color: var(--text-secondary); border-color: transparent; }
+    .button-quiet:hover:not(:disabled) { background: rgba(255, 255, 255, .05); color: var(--text); }
+    .button-compact { min-height: 30px; padding: 0 10px; border-radius: var(--radius-sm); font-size: 12px; }
+    .icon-button { width: 32px; min-height: 32px; padding: 0; }
+    .text-button {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    .text-button:hover { color: var(--text); }
+
+    .provider-list { display: grid; gap: 8px; }
+    .provider-card {
+      min-height: 58px;
+      padding: 12px 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xl);
+      background: var(--card);
+    }
+    .provider-name { font-weight: 550; }
+    .provider-type {
+      padding: 1px 6px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      font-size: 10px;
+      line-height: 16px;
+    }
+    .status-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--success); }
+    .provider-actions { margin-left: auto; display: flex; align-items: center; gap: 5px; }
+    .provider-action { color: var(--text-secondary); font-size: 12px; }
+    .add-provider {
+      width: 100%;
+      min-height: 48px;
+      margin-top: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-lg);
+      background: transparent;
+      color: var(--text-secondary);
+    }
+    .add-provider:hover { background: rgba(255, 255, 255, .025); color: var(--text); }
+
+    .section-separator { height: 1px; margin: 26px 0 24px; background: var(--border); }
+    .enhance-panel { display: flex; flex-direction: column; gap: 18px; }
+    .enhance-header { display: flex; align-items: flex-start; gap: 12px; }
+    .enhance-symbol {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid var(--border-strong);
+      border-radius: 11px;
+      background: var(--card);
+      color: var(--text-secondary);
+    }
+    .enhance-heading { min-width: 0; }
+    .enhance-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .enhance-title-line h3 { margin: 0; font-size: 17px; line-height: 24px; font-weight: 600; }
+    .enhance-heading p { max-width: 660px; margin: 5px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 21px; }
+    .builtin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 7px;
+      border: 1px solid var(--border-strong);
+      border-radius: 999px;
+      color: var(--text-secondary);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .enhance-header > .button { margin-left: auto; }
+
+    .catalog-meta {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: rgba(32, 32, 32, .62);
+      color: var(--text-tertiary);
+      font-size: 11px;
+    }
+    .meta-item { display: inline-flex; align-items: center; gap: 6px; }
+    .meta-item strong { color: var(--text-secondary); font-weight: 500; }
+    .meta-divider { width: 1px; height: 12px; background: var(--border-strong); }
+
+    .rules {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--module);
+    }
+    .rules summary {
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .rules summary::-webkit-details-marker { display: none; }
+    .rules summary .chevron { margin-left: auto; transition: transform 140ms ease; }
+    .rules[open] summary .chevron { transform: rotate(180deg); }
+    .rules-body { padding: 0 12px 12px 36px; color: var(--text-tertiary); font-size: 12px; line-height: 20px; }
+    .rules-body p { margin: 0 0 8px; }
+    .rules-body p:last-child { margin-bottom: 0; }
+    .rules-body .rule-warning { color: #c8ab74; }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0;
+      padding: 2px 0 4px;
+    }
+    .step { position: relative; display: flex; align-items: center; gap: 8px; color: var(--text-tertiary); font-size: 11px; }
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      z-index: 0;
+      top: 12px;
+      left: 30px;
+      right: 10px;
+      height: 1px;
+      background: var(--border-strong);
+    }
+    .step-number {
+      position: relative;
+      z-index: 1;
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      background: var(--modal);
+      font-size: 11px;
+    }
+    .step-label { position: relative; z-index: 1; padding-right: 8px; background: var(--modal); }
+    .step.active { color: var(--text); }
+    .step.active .step-number { border-color: var(--text-secondary); background: var(--text); color: #252525; }
+    .step.complete { color: var(--text-secondary); }
+    .step.complete .step-number { border-color: rgba(81, 197, 130, .45); color: var(--success); }
+    .step.complete:not(:last-child)::after { background: rgba(81, 197, 130, .3); }
+
+    .setup-card {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xl);
+      background: var(--card);
+    }
+    .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .card-heading h4 { margin: 0; font-size: 13px; font-weight: 550; }
+    .card-heading p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 11px; }
+    .control-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .field-label { color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+    .select-wrap { position: relative; }
+    .select-wrap select {
+      width: 100%;
+      height: 40px;
+      padding: 0 34px 0 12px;
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      outline: none;
+      background: var(--module);
+      color: var(--text);
+      font-size: 13px;
+      text-overflow: ellipsis;
+    }
+    .select-wrap select:hover { border-color: var(--border-emphasis); }
+    .select-wrap > .icon { position: absolute; right: 11px; top: 12px; pointer-events: none; color: var(--text-tertiary); }
+    .setup-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .setup-actions .hint { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: 11px; }
+
+    .page { display: flex; flex-direction: column; gap: 18px; }
+    .selection-summary {
+      padding: 11px 13px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--module);
+    }
+    .selection-summary .summary-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .selection-summary strong { font-size: 12px; font-weight: 550; }
+    .selection-summary .summary-source { color: var(--text-tertiary); font-size: 11px; }
+    .selection-summary .button { margin-left: auto; }
+
+    .callout {
+      padding: 11px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--module);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 19px;
+    }
+    .callout > .icon { margin-top: 2px; }
+    .callout-warning { border-color: rgba(215, 170, 82, .18); background: var(--warning-bg); color: #c8b58e; }
+    .callout-success { border-color: rgba(81, 197, 130, .2); background: var(--success-bg); color: #a8dabe; }
+    .callout strong { color: var(--text); font-weight: 550; }
+
+    .results-section { display: flex; flex-direction: column; gap: 12px; }
+    .results-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .results-title h4 { margin: 0; font-size: 14px; font-weight: 550; }
+    .results-title p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 11px; }
+    .result-count { color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+    .result-count strong { color: var(--text); font-weight: 550; }
+    .search-box { position: relative; }
+    .search-box > .icon { position: absolute; left: 12px; top: 11px; color: var(--text-tertiary); }
+    .search-box input {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px 0 36px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      outline: none;
+      background: var(--module);
+      color: var(--text);
+      font-size: 12px;
+    }
+    .search-box input::placeholder { color: var(--text-tertiary); }
+    .search-box input:focus { border-color: var(--border-emphasis); }
+    .model-list { display: grid; gap: 8px; }
+    .model-row {
+      width: 100%;
+      min-height: 66px;
+      padding: 11px 12px;
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-align: left;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: var(--card);
+      color: var(--text);
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+    .model-row:hover { background: var(--card-hover); border-color: var(--border-strong); }
+    .model-row.selected { border-color: var(--border-emphasis); background: #2d2d2d; }
+    .model-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      flex: none;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--module);
+      color: var(--text-tertiary);
+    }
+    .model-identity { min-width: 0; flex: 1; }
+    .model-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 550; }
+    .model-id { display: block; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: 11px; }
+    .match-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 7px;
+      flex: none;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--text-tertiary);
+      background: rgba(255, 255, 255, .02);
+      font-size: 10px;
+      font-weight: 500;
+    }
+    .match-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+    .match-badge.matched { border-color: rgba(81, 197, 130, .18); background: var(--success-bg); color: var(--success); }
+    .match-badge.ambiguous { border-color: rgba(215, 170, 82, .2); background: var(--warning-bg); color: var(--warning); }
+    .model-row .row-action { display: inline-flex; align-items: center; gap: 4px; flex: none; color: var(--text-secondary); font-size: 11px; }
+    .empty-filter { padding: 28px 16px; text-align: center; border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); color: var(--text-tertiary); }
+
+    .detail-back { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .back-button { padding-left: 6px; }
+    .detail-heading { display: flex; align-items: flex-start; gap: 12px; }
+    .detail-heading .model-icon { width: 40px; height: 40px; }
+    .detail-title { min-width: 0; }
+    .detail-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+    .detail-title h4 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+    .detail-title p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 12px; }
+
+    .detail-card {
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xl);
+      background: var(--card);
+    }
+    .detail-card .card-heading h4 { display: flex; align-items: center; gap: 7px; }
+    .candidate-select select { background: var(--module); }
+    .candidate-footnote { display: flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 11px; }
+    .capability-card {
+      padding: 11px 12px;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border-radius: var(--radius-md);
+      background: var(--module);
+    }
+    .capability-card > .icon { margin-top: 2px; color: var(--success); }
+    .capability-card strong { display: block; font-size: 12px; font-weight: 550; }
+    .capability-card p { margin: 2px 0 0; color: var(--text-tertiary); font-size: 11px; line-height: 18px; }
+    .capability-status { margin-left: auto; flex: none; color: var(--success); font-size: 11px; }
+    .option-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 9px;
+      cursor: pointer;
+      color: var(--text-secondary);
+    }
+    .option-row input { margin: 3px 0 0; width: 14px; height: 14px; accent-color: #e6e6e6; }
+    .option-row strong { display: block; color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+    .option-row small { display: block; margin-top: 1px; color: var(--text-tertiary); font-size: 11px; }
+    .detail-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+    .preview-card {
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-xl);
+      background: var(--card);
+    }
+    .preview-card-header {
+      padding: 13px 15px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .preview-card-header h4 { margin: 0; font-size: 13px; font-weight: 550; }
+    .preview-card-header .match-badge { margin-left: auto; }
+    .change-count { color: var(--text-tertiary); font-size: 11px; }
+    .no-change { padding: 30px 18px; text-align: center; }
+    .no-change-icon {
+      width: 38px;
+      height: 38px;
+      margin: 0 auto 10px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(81, 197, 130, .25);
+      border-radius: 50%;
+      background: var(--success-bg);
+      color: var(--success);
+    }
+    .no-change strong { display: block; font-size: 13px; font-weight: 550; }
+    .no-change p { margin: 4px 0 0; color: var(--text-tertiary); font-size: 11px; }
+    .diff-body { padding: 15px; display: flex; flex-direction: column; gap: 14px; }
+    .diff-field-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .diff-field-name strong { font-size: 12px; font-weight: 550; }
+    .diff-field-name code { overflow-wrap: anywhere; color: var(--text-tertiary); font-size: 11px; }
+    .diff-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .diff-column { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--module); }
+    .diff-column.after { border-color: rgba(81, 197, 130, .18); }
+    .diff-label {
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+    .diff-label span:last-child { color: var(--text-tertiary); font-size: 10px; }
+    .json-block { margin: 0; padding: 10px; overflow: auto; color: #c7c7c7; font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .json-removed { display: block; margin: 0 -4px; padding: 0 4px; border-radius: 3px; background: var(--danger-bg); color: #dda0a0; text-decoration: line-through; text-decoration-color: rgba(221, 160, 160, .45); }
+    .json-key { color: #d5d5d5; }
+    .json-value { color: #aeb7c7; }
+    .diff-annotation { margin: 0 10px 10px; padding: 5px 7px; display: flex; align-items: center; gap: 5px; border-radius: 4px; background: var(--success-bg); color: #a8dabe; font-size: 10px; }
+    .diff-annotation .icon { width: 12px; height: 12px; }
+    .diff-note { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: 11px; }
+
+    .warning-details { overflow: hidden; border: 1px solid rgba(215, 170, 82, .16); border-radius: var(--radius-md); background: var(--warning-bg); }
+    .warning-details summary {
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #d1b77e;
+      font-size: 12px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .warning-details summary::-webkit-details-marker { display: none; }
+    .warning-details summary .warning-count {
+      min-width: 18px;
+      height: 18px;
+      padding: 0 5px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(215, 170, 82, .12);
+      font-size: 10px;
+    }
+    .warning-details summary .chevron { margin-left: auto; transition: transform 140ms ease; }
+    .warning-details[open] summary .chevron { transform: rotate(180deg); }
+    .warning-details ul { margin: 0; padding: 2px 14px 12px 31px; color: #bba87f; font-size: 11px; line-height: 19px; }
+    .warning-details li + li { margin-top: 4px; }
+
+    .confirm-card {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border: 1px solid rgba(215, 170, 82, .22);
+      border-radius: var(--radius-lg);
+      background: rgba(215, 170, 82, .055);
+    }
+    .confirm-card .option-row strong { color: #d6c5a5; }
+    .apply-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .apply-footer .safe-note { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: 11px; }
+
+    .saved-card {
+      padding: 22px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 13px;
+      border: 1px solid rgba(81, 197, 130, .22);
+      border-radius: var(--radius-xl);
+      background: var(--success-bg);
+    }
+    .saved-card .no-change-icon { margin: 0; flex: none; }
+    .saved-card h4 { margin: 0; font-size: 14px; font-weight: 550; color: #c3e8d2; }
+    .saved-card p { margin: 4px 0 0; color: #9fc9b1; font-size: 12px; line-height: 20px; }
+    .saved-meta { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px 14px; color: #8fb8a1; font-size: 11px; }
+    .saved-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+    .preview-footer {
+      width: min(800px, calc(100% - 40px));
+      margin: -34px auto 34px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      color: var(--text-tertiary);
+      font-size: 11px;
+    }
+    .preview-footer span { display: inline-flex; align-items: center; gap: 6px; }
+    .toast {
+      position: fixed;
+      z-index: 20;
+      left: 50%;
+      bottom: 24px;
+      transform: translate(-50%, 12px);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      background: #333;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .35);
+      color: var(--text);
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 160ms ease, transform 160ms ease;
+    }
+    .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+    @media (max-width: 720px) {
+      .preview-header { padding-top: 20px; }
+      .preview-tag { display: none; }
+      .state-switcher { display: flex; overflow-x: auto; justify-content: flex-start; }
+      .state-tab { min-width: 118px; }
+      .modal-body { padding: 18px; }
+      .modal-topbar { padding: 16px 18px; }
+      .control-grid, .diff-grid { grid-template-columns: 1fr; }
+      .step-label { font-size: 10px; }
+      .step:not(:last-child)::after { right: 4px; }
+      .model-row .row-action span { display: none; }
+      .match-badge { margin-left: auto; }
+      .setup-actions, .apply-footer { align-items: stretch; flex-direction: column; }
+      .setup-actions .button, .apply-footer .button { width: 100%; }
+      .apply-footer .safe-note { justify-content: center; }
+      .preview-footer { align-items: flex-start; flex-direction: column; gap: 5px; }
+    }
+    @media (max-width: 460px) {
+      .preview-header, .state-switcher, .settings-modal, .preview-footer { width: calc(100% - 24px); }
+      .modal-topbar .button span { display: none; }
+      .enhance-header > .button { display: none; }
+      .step { gap: 5px; }
+      .step-label { max-width: 62px; line-height: 14px; }
+      .model-row { gap: 8px; }
+      .model-icon { display: none; }
+      .model-row .match-badge { padding: 2px 5px; }
+      .selection-summary .button { margin-left: 0; width: 100%; }
+      .detail-actions { flex-direction: column-reverse; }
+      .detail-actions .button { width: 100%; }
+      .saved-actions { flex-direction: column; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <svg width="0" height="0" aria-hidden="true" style="position:absolute">
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="m12 3 1.35 4.15L17.5 8.5l-4.15 1.35L12 14l-1.35-4.15L6.5 8.5l4.15-1.35L12 3Z"/><path d="m18.5 14 .8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/><path d="m5 14 .65 1.85L7.5 16.5l-1.85.65L5 19l-.65-1.85L2.5 16.5l1.85-.65L5 14Z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m18 6-12 12M6 6l12 12"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6 6.5L4 9m2 6a7 7 0 0 0 12 2.5l2-2.5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+    <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6M9 12h11"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+    <symbol id="i-model" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m21 15-5-5L5 20"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.7 2.5 18a2 2 0 0 0 1.8 3h15.4a2 2 0 0 0 1.8-3L13.7 3.7a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+  </svg>
+
+  <header class="preview-header">
+    <div class="preview-brand">
+      <div class="preview-mark"><svg class="icon icon-lg"><use href="#i-sparkles"/></svg></div>
+      <div>
+        <h1>模型资料增强 · 视觉重设计</h1>
+        <p>沿用 DSH 原生设置页的卡片、描边与交互层级</p>
+      </div>
+    </div>
+    <span class="preview-tag">独立 HTML 效果预览</span>
+  </header>
+
+  <nav class="state-switcher" aria-label="预览页面状态">
+    <button class="state-tab active" data-nav="initial"><span class="state-index">1</span>初始设置</button>
+    <button class="state-tab" data-nav="results"><span class="state-index">2</span>匹配结果</button>
+    <button class="state-tab" data-nav="nochange"><span class="state-index">3</span>无变更</button>
+    <button class="state-tab" data-nav="changes"><span class="state-index">4</span>待确认应用</button>
+    <button class="state-tab" data-nav="saved"><span class="state-index">5</span>保存完成</button>
+  </nav>
+
+  <main class="settings-modal">
+    <div class="modal-topbar">
+      <h2>模型</h2>
+      <div class="top-actions">
+        <button class="button button-secondary button-compact demo-only"><svg class="icon"><use href="#i-file"/></svg><span>打开配置文件</span></button>
+        <button class="button button-quiet icon-button demo-only" aria-label="关闭"><svg class="icon"><use href="#i-close"/></svg></button>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <p class="native-intro">填入各提供商的 API 密钥即可使用其模型。</p>
+      <div class="provider-list" aria-label="原生模型提供商列表示意">
+        <div class="provider-card">
+          <span class="provider-name">DeepSeek 账号</span><span class="status-dot"></span><span style="color:var(--success);font-size:12px">已登录</span>
+        </div>
+        <div class="provider-card">
+          <span class="provider-name">self-codex</span><span class="provider-type">自定义</span><span class="status-dot"></span>
+          <div class="provider-actions"><span class="provider-action">编辑</span></div>
+        </div>
+        <div class="provider-card">
+          <span class="provider-name">WorkBuddy</span>
+          <div class="provider-actions"><span class="provider-action">编辑</span></div>
+        </div>
+      </div>
+      <button class="add-provider demo-only"><svg class="icon"><use href="#i-plus"/></svg>添加模型提供商</button>
+
+      <div class="section-separator"></div>
+
+      <section class="enhance-panel" aria-label="模型资料增强">
+        <header class="enhance-header">
+          <div class="enhance-symbol"><svg class="icon icon-lg"><use href="#i-sparkles"/></svg></div>
+          <div class="enhance-heading">
+            <div class="enhance-title-line">
+              <h3>模型资料增强</h3>
+              <span class="builtin-badge"><svg class="icon" style="width:11px;height:11px"><use href="#i-database"/></svg>内置资料</span>
+            </div>
+            <p>匹配已添加模型与原厂资料，预览后受控保存；不修改原生未保存草稿。</p>
+          </div>
+          <button class="button button-quiet button-compact" id="reloadButton" title="重新读取配置"><svg class="icon"><use href="#i-refresh"/></svg>重新读取</button>
+        </header>
+
+        <div class="catalog-meta" aria-label="内置资料信息">
+          <span class="meta-item"><strong>277</strong> 个内置模型</span>
+          <span class="meta-divider"></span>
+          <span class="meta-item"><strong>19</strong> 个原厂来源</span>
+          <span class="meta-divider"></span>
+          <span class="meta-item">生成于 2026/11/18 15:50</span>
+        </div>
+
+        <details class="rules">
+          <summary><svg class="icon"><use href="#i-info"/></svg>资料来源与注入规则<svg class="icon chevron"><use href="#i-chevron-down"/></svg></summary>
+          <div class="rules-body">
+            <p>资料由 models.dev 原厂目录汇编并预置，不含三方平台建议，不代表厂商对当前端点的认证。</p>
+            <p class="rule-warning">注入的思考档位不包含 off；已有可靠映射中的 off 会在预览中移除，确认后保存。非推理能力保留 false，未知能力不虚构档位。</p>
+          </div>
+        </details>
+
+        <div class="stepper" id="stepper" data-step="1">
+          <div class="step active" data-step-item="1"><span class="step-number">1</span><span class="step-label">选择服务商</span></div>
+          <div class="step" data-step-item="2"><span class="step-number">2</span><span class="step-label">匹配模型</span></div>
+          <div class="step" data-step-item="3"><span class="step-number">3</span><span class="step-label">预览并应用</span></div>
+        </div>
+
+        <!-- 1. 初始设置 -->
+        <div class="page" data-page="initial">
+          <section class="setup-card">
+            <div class="card-heading">
+              <div><h4>选择匹配范围</h4><p>只读取 DSH 中已保存的模型，不请求供应商完整清单</p></div>
+              <svg class="icon tertiary"><use href="#i-sliders"/></svg>
+            </div>
+            <div class="control-grid">
+              <label class="field">
+                <span class="field-label">目标服务商</span>
+                <span class="select-wrap">
+                  <select id="providerSelect">
+                    <option value="">请选择目标服务商</option>
+                    <option value="self-codex">self-codex（self-codex）</option>
+                    <option value="pptoken">pptoken（pptoken）</option>
+                  </select>
+                  <svg class="icon"><use href="#i-chevron-down"/></svg>
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">原厂资料来源</span>
+                <span class="select-wrap">
+                  <select id="sourceSelect">
+                    <option>自动匹配原厂来源</option>
+                    <option>OpenAI（openai）</option>
+                    <option>DeepSeek（deepseek）</option>
+                  </select>
+                  <svg class="icon"><use href="#i-chevron-down"/></svg>
+                </span>
+              </label>
+            </div>
+            <div class="setup-actions">
+              <span class="hint"><svg class="icon"><use href="#i-shield"/></svg>仅生成本地预览，确认后才会保存</span>
+              <button class="button button-primary" id="scanButton" disabled>读取已添加模型并匹配<svg class="icon"><use href="#i-arrow-right"/></svg></button>
+            </div>
+          </section>
+        </div>
+
+        <!-- 2. 匹配结果 -->
+        <div class="page" data-page="results" hidden>
+          <div class="selection-summary">
+            <div class="summary-main"><span class="status-dot"></span><strong>self-codex</strong><span class="summary-source">自动匹配原厂来源</span></div>
+            <button class="button button-quiet button-compact" data-go="initial"><svg class="icon"><use href="#i-sliders"/></svg>调整匹配范围</button>
+          </div>
+          <div class="callout callout-warning">
+            <svg class="icon"><use href="#i-info"/></svg>
+            <span>仅列出该服务商已在 DSH 中添加的模型；未执行模型发现或推理请求。</span>
+          </div>
+          <section class="results-section">
+            <div class="results-toolbar">
+              <div class="results-title"><h4>已添加模型</h4><p>选择模型查看原厂资料与配置建议</p></div>
+              <span class="result-count">显示 <strong id="visibleCount">6</strong> / <span id="totalCount">6</span></span>
+            </div>
+            <label class="search-box">
+              <svg class="icon"><use href="#i-search"/></svg>
+              <input type="search" id="modelFilter" placeholder="筛选模型 ID 或名称" aria-label="筛选模型 ID 或名称">
+            </label>
+            <div class="model-list" id="modelList">
+              <button class="model-row" data-model="codex-auto-review" data-target="unmatched">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">codex-auto-review</span><span class="model-id code">codex-auto-review</span></span>
+                <span class="match-badge">未匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+              <button class="model-row selected" data-model="gpt-6.1-sol" data-target="nochange">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">gpt-6.1-sol</span><span class="model-id code">gpt-6.1-sol</span></span>
+                <span class="match-badge matched">已匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+              <button class="model-row" data-model="gpt-6.1-terra" data-target="changes">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">gpt-6.1-terra</span><span class="model-id code">gpt-6.1-terra</span></span>
+                <span class="match-badge matched">已匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+              <button class="model-row" data-model="gpt-6-sol" data-target="nochange">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">gpt-6-sol</span><span class="model-id code">gpt-6-sol</span></span>
+                <span class="match-badge matched">已匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+              <button class="model-row" data-model="gpt-image-2.6" data-target="unmatched">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">gpt-image-2.6</span><span class="model-id code">gpt-image-2.6</span></span>
+                <span class="match-badge">未匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+              <button class="model-row" data-model="gpt-image-2.5" data-target="unmatched">
+                <span class="model-icon"><svg class="icon"><use href="#i-model"/></svg></span>
+                <span class="model-identity"><span class="model-name">gpt-image-2.5</span><span class="model-id code">gpt-image-2.5</span></span>
+                <span class="match-badge">未匹配</span><span class="row-action"><span>查看推荐</span><svg class="icon"><use href="#i-chevron-right"/></svg></span>
+              </button>
+            </div>
+            <div class="empty-filter" id="emptyFilter" hidden>没有匹配筛选条件的模型</div>
+          </section>
+        </div>
+
+        <!-- 3. 无变更详情 -->
+        <div class="page" data-page="nochange" hidden>
+          <div class="detail-back">
+            <button class="button button-quiet button-compact back-button" data-go="results"><svg class="icon"><use href="#i-arrow-left"/></svg>返回模型列表</button>
+            <span class="tertiary" style="font-size:11px">self-codex</span>
+          </div>
+          <div class="detail-heading">
+            <span class="model-icon"><svg class="icon icon-lg"><use href="#i-model"/></svg></span>
+            <div class="detail-title">
+              <div class="detail-title-line"><h4>gpt-6.1-sol</h4><span class="match-badge matched">已匹配</span></div>
+              <p class="code">gpt-6.1-sol</p>
+            </div>
+          </div>
+          <section class="detail-card">
+            <div class="card-heading"><div><h4>原厂资料候选</h4><p>确认资料来源后生成最小配置变更</p></div></div>
+            <label class="field candidate-select">
+              <span class="field-label">匹配候选</span>
+              <span class="select-wrap"><select><option>GPT-6.1 Sol — openai/gpt-6.1-sol（exact-id）</option></select><svg class="icon"><use href="#i-chevron-down"/></svg></span>
+            </label>
+            <div class="candidate-footnote"><svg class="icon"><use href="#i-check"/></svg>模型 ID 精确匹配</div>
+            <div class="capability-card">
+              <svg class="icon"><use href="#i-image"/></svg>
+              <div><strong>原厂资料的图片输入</strong><p>这是原厂资料记载的能力，不承诺当前端点真实支持图片输入。</p></div>
+              <span class="capability-status">支持</span>
+            </div>
+            <label class="option-row"><input type="checkbox" class="overwrite-check"><span><strong>允许替换已有字段</strong><small>默认只填充空字段；替换已有值需要再次确认影响</small></span></label>
+            <div class="detail-actions"><button class="button button-secondary regenerate"><svg class="icon"><use href="#i-refresh"/></svg>重新生成预览</button></div>
+          </section>
+          <section class="preview-card">
+            <div class="preview-card-header"><h4>配置变更预览</h4><span class="match-badge matched">无需变更</span></div>
+            <div class="no-change">
+              <div class="no-change-icon"><svg class="icon icon-lg"><use href="#i-check"/></svg></div>
+              <strong>当前配置已与推荐一致</strong>
+              <p>没有字段变更，不需要写入配置。</p>
+            </div>
+          </section>
+          <details class="warning-details">
+            <summary><svg class="icon"><use href="#i-alert"/></svg>注意事项<span class="warning-count">4</span><svg class="icon chevron"><use href="#i-chevron-down"/></svg></summary>
+            <ul>
+              <li>maxTokens 是目录输出上限，不是日常请求的建议预算。</li>
+              <li>未经可靠协议映射的档位不会转换为 off。</li>
+              <li>Maximum output 同样是目录上限，不代表推荐请求预算。</li>
+              <li>默认思考档位的选择与修复已暂缓；不会更改服务商或会话默认值。</li>
+            </ul>
+          </details>
+          <div class="apply-footer"><span class="safe-note"><svg class="icon"><use href="#i-shield"/></svg>保存前始终核对字段差异</span><button class="button button-primary" disabled>无需配置</button></div>
+        </div>
+
+        <!-- 4. 有变更详情 -->
+        <div class="page" data-page="changes" hidden>
+          <div class="detail-back">
+            <button class="button button-quiet button-compact back-button" data-go="results"><svg class="icon"><use href="#i-arrow-left"/></svg>返回模型列表</button>
+            <span class="tertiary" style="font-size:11px">self-codex</span>
+          </div>
+          <div class="detail-heading">
+            <span class="model-icon"><svg class="icon icon-lg"><use href="#i-model"/></svg></span>
+            <div class="detail-title">
+              <div class="detail-title-line"><h4>gpt-6.1-terra</h4><span class="match-badge matched">已匹配</span></div>
+              <p class="code">gpt-6.1-terra</p>
+            </div>
+          </div>
+          <section class="detail-card">
+            <div class="card-heading"><div><h4>原厂资料候选</h4><p>确认资料来源后生成最小配置变更</p></div></div>
+            <label class="field candidate-select">
+              <span class="field-label">匹配候选</span>
+              <span class="select-wrap"><select><option>GPT-6.1 Terra — openai/gpt-6.1-terra（exact-id）</option></select><svg class="icon"><use href="#i-chevron-down"/></svg></span>
+            </label>
+            <div class="candidate-footnote"><svg class="icon"><use href="#i-check"/></svg>模型 ID 精确匹配</div>
+            <div class="capability-card">
+              <svg class="icon"><use href="#i-image"/></svg>
+              <div><strong>原厂资料的图片输入</strong><p>这是原厂资料记载的能力，不承诺当前端点真实支持图片输入。</p></div>
+              <span class="capability-status">支持</span>
+            </div>
+            <label class="option-row"><input type="checkbox" class="overwrite-check" checked><span><strong>允许替换已有字段</strong><small>已启用替换；应用前需要确认字段覆盖影响</small></span></label>
+            <div class="detail-actions"><button class="button button-secondary regenerate"><svg class="icon"><use href="#i-refresh"/></svg>重新生成预览</button></div>
+          </section>
+          <section class="preview-card">
+            <div class="preview-card-header"><h4>配置变更预览</h4><span class="change-count">将修改 1 个字段</span><span class="match-badge ambiguous">待确认</span></div>
+            <div class="diff-body">
+              <div class="diff-field-name"><strong>思考档位映射</strong><code>gpt-6.1-terra.reasoningEfforts</code></div>
+              <div class="diff-grid">
+                <div class="diff-column">
+                  <div class="diff-label"><span>当前值</span><span>5 个档位</span></div>
+                  <pre class="json-block">{
+  <span class="json-removed"><span class="json-key">"off"</span>: <span class="json-value">null</span>,</span>
+  <span class="json-key">"low"</span>: <span class="json-value">"low"</span>,
+  <span class="json-key">"medium"</span>: <span class="json-value">"medium"</span>,
+  <span class="json-key">"high"</span>: <span class="json-value">"high"</span>,
+  <span class="json-key">"xhigh"</span>: <span class="json-value">"xhigh"</span>
+}</pre>
+                </div>
+                <div class="diff-column after">
+                  <div class="diff-label"><span>建议值</span><span>4 个档位</span></div>
+                  <pre class="json-block">{
+  <span class="json-key">"low"</span>: <span class="json-value">"low"</span>,
+  <span class="json-key">"medium"</span>: <span class="json-value">"medium"</span>,
+  <span class="json-key">"high"</span>: <span class="json-value">"high"</span>,
+  <span class="json-key">"xhigh"</span>: <span class="json-value">"xhigh"</span>
+}</pre>
+                  <div class="diff-annotation"><svg class="icon"><use href="#i-check"/></svg>已移除 "off" 档位</div>
+                </div>
+              </div>
+              <div class="diff-note"><svg class="icon"><use href="#i-info"/></svg>其他档位及 wire 值保持不变</div>
+            </div>
+          </section>
+          <details class="warning-details" open>
+            <summary><svg class="icon"><use href="#i-alert"/></svg>注意事项<span class="warning-count">4</span><svg class="icon chevron"><use href="#i-chevron-down"/></svg></summary>
+            <ul>
+              <li>maxTokens 是目录输出上限，不是日常请求的建议预算。</li>
+              <li>未经可靠协议映射的档位不会转换为 off。</li>
+              <li>现有 off 档位将从思考映射中移除；应用前请检查此变更。</li>
+              <li>Maximum output 是目录上限，不代表推荐请求预算。</li>
+            </ul>
+          </details>
+          <div class="confirm-card">
+            <label class="option-row"><input type="checkbox" id="confirmApply"><span><strong>我已检查字段覆盖影响，确认应用此预览</strong><small>确认后才能执行一次性配置写入</small></span></label>
+            <div class="apply-footer"><span class="safe-note"><svg class="icon"><use href="#i-shield"/></svg>仅保存上方展示的字段变更</span><button class="button button-primary" id="applyButton" disabled><svg class="icon"><use href="#i-check"/></svg>确认并应用推荐参数</button></div>
+          </div>
+        </div>
+
+        <!-- 5. 未匹配详情 -->
+        <div class="page" data-page="unmatched" hidden>
+          <div class="detail-back"><button class="button button-quiet button-compact back-button" data-go="results"><svg class="icon"><use href="#i-arrow-left"/></svg>返回模型列表</button><span class="tertiary" style="font-size:11px">self-codex</span></div>
+          <div class="detail-heading">
+            <span class="model-icon"><svg class="icon icon-lg"><use href="#i-model"/></svg></span>
+            <div class="detail-title"><div class="detail-title-line"><h4 id="unmatchedName">codex-auto-review</h4><span class="match-badge">未匹配</span></div><p class="code" id="unmatchedId">codex-auto-review</p></div>
+          </div>
+          <section class="detail-card">
+            <div class="card-heading"><div><h4>原厂资料候选</h4><p>没有唯一匹配时，必须手动选择明确候选</p></div></div>
+            <label class="field candidate-select"><span class="field-label">匹配候选</span><span class="select-wrap"><select id="candidateSelect"><option value="">请选择明确的原厂资料候选</option><option>OpenAI — openai/model（manual）</option></select><svg class="icon"><use href="#i-chevron-down"/></svg></span></label>
+            <div class="callout"><svg class="icon"><use href="#i-info"/></svg><span>未选择候选前不会生成建议，也不会自动猜测模型能力。</span></div>
+            <div class="detail-actions"><button class="button button-secondary" id="unmatchedPreview" disabled><svg class="icon"><use href="#i-refresh"/></svg>生成预览</button></div>
+          </section>
+        </div>
+
+        <!-- 6. 保存完成 -->
+        <div class="page" data-page="saved" hidden>
+          <div class="detail-back"><button class="button button-quiet button-compact back-button" data-go="results"><svg class="icon"><use href="#i-arrow-left"/></svg>返回模型列表</button><span class="tertiary" style="font-size:11px">self-codex</span></div>
+          <div class="detail-heading">
+            <span class="model-icon"><svg class="icon icon-lg"><use href="#i-model"/></svg></span>
+            <div class="detail-title"><div class="detail-title-line"><h4>gpt-6.1-terra</h4><span class="match-badge matched">已保存</span></div><p class="code">gpt-6.1-terra</p></div>
+          </div>
+          <section class="saved-card">
+            <div class="no-change-icon"><svg class="icon icon-lg"><use href="#i-check"/></svg></div>
+            <div>
+              <h4>推荐参数已保存并核对</h4>
+              <p>配置字段已写入实际模型配置。远端模型调用与当前端点的真实能力未经验证。</p>
+              <div class="saved-meta"><span>已更新 1 个字段</span><span>其他配置保持不变</span><span>一次性方案已消费</span></div>
+            </div>
+          </section>
+          <section class="preview-card">
+            <div class="preview-card-header"><h4>本次应用摘要</h4><span class="match-badge matched">核对通过</span></div>
+            <div class="diff-body">
+              <div class="diff-field-name"><strong>思考档位映射</strong><code>gpt-6.1-terra.reasoningEfforts</code></div>
+              <div class="callout callout-success"><svg class="icon"><use href="#i-check"/></svg><span>已移除 <span class="code">off</span> 档位，保留 low、medium、high 与 xhigh 的原有映射。</span></div>
+            </div>
+          </section>
+          <div class="callout callout-warning"><svg class="icon"><use href="#i-alert"/></svg><span>配置保存不代表供应商端点已通过推理或图片输入测试，请勿重复盲目写入。</span></div>
+          <div class="saved-actions"><button class="button button-secondary" data-go="results">返回模型列表</button><button class="button button-primary" data-go="changes">查看原预览</button></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="preview-footer">
+    <span><svg class="icon"><use href="#i-info"/></svg>所有交互仅切换预览状态，不读取或写入任何配置。</span>
+    <span>DSH 深色主题 · 720 px 内容区适配</span>
+  </footer>
+  <div class="toast" id="toast" role="status" aria-live="polite"><svg class="icon"><use href="#i-check"/></svg><span id="toastText"></span></div>
+
+  <script>
+    (() => {
+      const pages = [...document.querySelectorAll('[data-page]')]
+      const navItems = [...document.querySelectorAll('[data-nav]')]
+      const stepper = document.getElementById('stepper')
+      const toast = document.getElementById('toast')
+      const toastText = document.getElementById('toastText')
+      let toastTimer
+
+      function notify(message) {
+        clearTimeout(toastTimer)
+        toastText.textContent = message
+        toast.classList.add('visible')
+        toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200)
+      }
+
+      function showPage(name) {
+        pages.forEach(page => { page.hidden = page.dataset.page !== name })
+        history.replaceState(null, '', '#' + name)
+        const navName = name === 'unmatched' ? 'results' : name
+        navItems.forEach(item => {
+          const active = item.dataset.nav === navName
+          item.classList.toggle('active', active)
+          item.setAttribute('aria-pressed', String(active))
+        })
+        const step = name === 'initial' ? 1 : name === 'results' ? 2 : 3
+        stepper.dataset.step = String(step)
+        document.querySelectorAll('[data-step-item]').forEach(item => {
+          const value = Number(item.dataset.stepItem)
+          item.classList.toggle('active', value === step)
+          item.classList.toggle('complete', value < step || (name === 'saved' && value === 3))
+          const number = item.querySelector('.step-number')
+          number.innerHTML = value < step || (name === 'saved' && value === 3)
+            ? '<svg class="icon" style="width:12px;height:12px"><use href="#i-check"/></svg>'
+            : String(value)
+        })
+      }
+
+      navItems.forEach(item => item.addEventListener('click', () => showPage(item.dataset.nav)))
+      document.querySelectorAll('[data-go]').forEach(item => item.addEventListener('click', () => showPage(item.dataset.go)))
+
+      const providerSelect = document.getElementById('providerSelect')
+      const scanButton = document.getElementById('scanButton')
+      providerSelect.addEventListener('change', () => {
+        scanButton.disabled = !providerSelect.value
+      })
+      scanButton.addEventListener('click', () => showPage('results'))
+
+      const modelRows = [...document.querySelectorAll('.model-row')]
+      modelRows.forEach(row => row.addEventListener('click', () => {
+        modelRows.forEach(item => item.classList.remove('selected'))
+        row.classList.add('selected')
+        if (row.dataset.target === 'unmatched') {
+          document.getElementById('unmatchedName').textContent = row.dataset.model
+          document.getElementById('unmatchedId').textContent = row.dataset.model
+        }
+        showPage(row.dataset.target)
+      }))
+
+      const modelFilter = document.getElementById('modelFilter')
+      modelFilter.addEventListener('input', () => {
+        const query = modelFilter.value.trim().toLowerCase()
+        let visible = 0
+        modelRows.forEach(row => {
+          const match = row.dataset.model.toLowerCase().includes(query)
+          row.hidden = !match
+          if (match) visible++
+        })
+        document.getElementById('visibleCount').textContent = String(visible)
+        document.getElementById('totalCount').textContent = String(visible)
+        document.getElementById('emptyFilter').hidden = visible !== 0
+      })
+
+      const confirmApply = document.getElementById('confirmApply')
+      const applyButton = document.getElementById('applyButton')
+      confirmApply.addEventListener('change', () => { applyButton.disabled = !confirmApply.checked })
+      applyButton.addEventListener('click', () => {
+        showPage('saved')
+        notify('预览状态：配置已保存并核对')
+      })
+
+      document.querySelectorAll('.regenerate').forEach(button => button.addEventListener('click', () => {
+        notify('已按当前选项重新生成预览')
+      }))
+      document.querySelectorAll('.overwrite-check').forEach(input => input.addEventListener('change', () => {
+        notify(input.checked ? '已允许替换已有字段，请重新核对预览' : '已切换为只填充空字段')
+      }))
+
+      const candidateSelect = document.getElementById('candidateSelect')
+      const unmatchedPreview = document.getElementById('unmatchedPreview')
+      candidateSelect.addEventListener('change', () => { unmatchedPreview.disabled = !candidateSelect.value })
+      unmatchedPreview.addEventListener('click', () => notify('手动候选已选择；此处仅展示交互状态'))
+
+      document.getElementById('reloadButton').addEventListener('click', () => notify('已重新读取内置资料与本地配置'))
+      document.querySelectorAll('.demo-only').forEach(button => button.addEventListener('click', () => notify('原生页面区域仅用于展示视觉上下文')))
+
+      const requestedPage = location.hash.slice(1)
+      showPage(pages.some(page => page.dataset.page === requestedPage) ? requestedPage : 'initial')
+    })()
+  </script>
+</body>
+</html>

@@ -40,7 +40,14 @@ window.__ModuleLoader__.load({
       })),
     }
     const zh = {
-      title: '模型资料增强', description: '使用工程内置的 models.dev 原厂来源资料匹配模型，预览后受控保存；不修改原生未保存草稿。',
+      title: '模型资料增强', description: '匹配已添加模型，预览原厂推荐参数，确认后安全写入配置。',
+      bundled: '工程内置', rules: '资料来源与注入规则', stepProvider: '选择服务商', stepMatch: '匹配模型', stepApply: '预览并应用',
+      setupTitle: '选择匹配范围', localOnly: '只读取已添加模型，不请求远端模型清单。', changeProvider: '更换服务商', backModels: '返回模型列表',
+      resultsTitle: '已添加模型', resultsHint: '选择模型，查看原厂资料与配置建议。', noAddedModels: '该服务商没有已添加模型，请先在原生设置中添加并保存。',
+      noCandidates: '未找到原厂资料候选。可返回并更换资料来源后重新匹配；没有明确候选时不会生成建议。',
+      overwriteHint: '关闭时只填空；移除可靠思考映射中的 off 仍需确认。', changes: '项字段变更', noWrite: '无需写入配置',
+      safeWrite: '仅保存本次预览字段，不修改端点、凭据与模型 ID。', offRemoved: '本次预览移除 off 档位，请核对完整映射后确认。',
+      savedTitle: '配置已保存并核对', unverifiedTitle: '保存结果需要检查', rescan: '读取最新模型', previewHint: '选择候选后自动预览；预览失效时请重新生成。',
       reload: '重新读取配置', loading: '处理中…', provider: '目标服务商', source: '原厂资料来源',
       chooseProvider: '请选择目标服务商', autoSource: '自动匹配原厂来源', scan: '读取已添加模型并匹配', filter: '筛选模型 ID 或名称',
       noRoutes: '没有可用路由，请先保存服务商配置。', noModels: '没有匹配筛选条件的模型。', catalogMissing: '内置原厂资料不可用，请检查插件文件；界面不会联网下载或更新。',
@@ -60,7 +67,14 @@ window.__ModuleLoader__.load({
       notSaved: '配置未保存，请检查结果与警告。', readOnly: '该路由不可写', result: '应用结果', noPreview: '选择模型及原厂资料候选以预览推荐。',
     }
     const en = {
-      title: 'Model recommendations', description: 'Match added models against bundled models.dev original-vendor metadata and preview controlled writes. Unsaved native drafts are not changed.',
+      title: 'Model recommendations', description: 'Match added models, preview vendor recommendations, and safely save confirmed changes.',
+      bundled: 'Bundled metadata', rules: 'Metadata sources and injection rules', stepProvider: 'Choose provider', stepMatch: 'Match models', stepApply: 'Preview and apply',
+      setupTitle: 'Choose matching scope', localOnly: 'Only reads added models; no remote model-list requests.', changeProvider: 'Change provider', backModels: 'Back to models',
+      resultsTitle: 'Added models', resultsHint: 'Choose a model to review vendor metadata and recommendations.', noAddedModels: 'This provider has no added models. Add and save models in the native settings first.',
+      noCandidates: 'No vendor candidates found. Go back and try another metadata source; no recommendations are generated without a specific candidate.',
+      overwriteHint: 'When off, only empty fields are filled. Removing off from reliable reasoning mappings still requires confirmation.', changes: 'field changes', noWrite: 'No configuration write needed',
+      safeWrite: 'Saves only previewed fields; endpoint, credentials, and model ID stay unchanged.', offRemoved: 'This preview removes the off level. Review the complete mapping before confirming.',
+      savedTitle: 'Configuration saved and checked', unverifiedTitle: 'Check the save result', rescan: 'Read latest models', previewHint: 'Selecting a candidate generates a preview. Regenerate it if the preview expires.',
       reload: 'Reload configuration', loading: 'Working…', provider: 'Target provider', source: 'Original-vendor source',
       chooseProvider: 'Choose a target provider', autoSource: 'Match original vendor automatically', scan: 'Load and match added models', filter: 'Filter model ID or name',
       noRoutes: 'No routes are available. Save a provider configuration first.', noModels: 'No models match this filter.', catalogMissing: 'Bundled vendor metadata is unavailable. Check the plugin files; this page does not download or update data.',
@@ -82,35 +96,76 @@ window.__ModuleLoader__.load({
     // Inherit the app's resolved color-scheme, not the OS preference. Every
     // surface and native option uses the same live light/dark alias palette.
     const CSS = `
-[data-dme] { color-scheme: inherit; color: var(--dsw-alias-label-primary); font-size: 14px; line-height: 1.5; border-top: 1px solid var(--dsw-alias-border-l2); padding-top: 16px; margin-top: 16px; }
-[data-dme] h3, [data-dme] h4, [data-dme] p { margin: 0 0 8px; }
-[data-dme] .dme-muted { color: var(--dsw-alias-label-secondary); }
-[data-dme] .dme-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
-[data-dme] .dme-controls > label { flex: 1 1 220px; }
-[data-dme] label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-[data-dme] .dme-check { flex-direction: row; align-items: start; margin: 8px 0; }
-[data-dme] input, [data-dme] select, [data-dme] button { font: inherit; color: var(--dsw-alias-label-primary); max-width: 100%; box-sizing: border-box; color-scheme: inherit; }
-[data-dme] button, [data-dme] select, [data-dme] input[type='search'] { padding: 6px 10px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md, 6px); background: var(--dsw-alias-bg-layer-1); }
-[data-dme] select, [data-dme] input[type='search'] { width: 100%; }
+[data-dme] { container-type: inline-size; color-scheme: inherit; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 1.55; border-top: 1px solid var(--dsw-alias-border-l1); padding-top: 24px; margin-top: 24px; display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+[data-dme] * { box-sizing: border-box; }
+[data-dme] h3, [data-dme] h4, [data-dme] p { margin: 0; overflow-wrap: anywhere; }
+[data-dme] h3 { font-size: 17px; font-weight: 600; }
+[data-dme] h4 { font-size: 14px; font-weight: 600; }
+[data-dme] .dme-muted { color: var(--dsw-alias-label-secondary); font-size: 12px; }
+[data-dme] .dme-stack { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+[data-dme] .dme-header, [data-dme] .dme-toolbar, [data-dme] .dme-actions, [data-dme] .dme-title-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; }
+[data-dme] .dme-header { align-items: flex-start; }
+[data-dme] .dme-heading { flex: 1 1 200px; min-width: 0; }
+[data-dme] .dme-heading p { margin-top: 5px; }
+[data-dme] .dme-symbol { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border: 1px solid var(--dsw-alias-border-l2); border-radius: 11px; background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+[data-dme] .dme-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-base); font-size: 11px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-meta strong { font-weight: 500; color: var(--dsw-alias-label-primary); }
+[data-dme] details { border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-base); }
+[data-dme] summary { padding: 10px 12px; cursor: pointer; color: var(--dsw-alias-label-secondary); font-size: 12px; }
+[data-dme] .dme-rules-body { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); list-style: none; gap: 10px; margin: 0; padding: 0; }
+[data-dme] .dme-step { display: flex; align-items: center; gap: 8px; color: var(--dsw-alias-label-secondary); font-size: 11px; min-width: 0; }
+[data-dme] .dme-step-number { display: grid; place-items: center; flex: none; width: 24px; height: 24px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 50%; }
+[data-dme] .dme-step[aria-current='step'] { color: var(--dsw-alias-label-primary); font-weight: 600; }
+[data-dme] .dme-step[aria-current='step'] .dme-step-number { background: var(--dsw-alias-label-primary); color: var(--dsw-alias-bg-base); }
+[data-dme] .dme-step[data-complete='true'] .dme-step-number { color: var(--dsw-alias-state-success-primary); border-color: currentColor; }
+[data-dme] .dme-card { padding: 16px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-1); }
+[data-dme] .dme-controls, [data-dme] .dme-diff-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 12px; }
+[data-dme] label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-check { flex-direction: row; align-items: start; gap: 9px; }
+[data-dme] .dme-check small { display: block; margin-top: 3px; }
+[data-dme] input, [data-dme] select, [data-dme] button { font: inherit; color: var(--dsw-alias-label-primary); max-width: 100%; color-scheme: inherit; }
+[data-dme] button, [data-dme] select, [data-dme] input[type='search'] { min-height: 36px; padding: 7px 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: var(--dsw-alias-bg-layer-1); }
+[data-dme] select, [data-dme] input[type='search'] { width: 100%; min-width: 0; }
 [data-dme] select option, [data-dme] select optgroup { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-overlay); }
 [data-dme] input[type='search']::placeholder { color: var(--dsw-alias-label-secondary); opacity: 1; }
-[data-dme] input[type='checkbox'] { accent-color: var(--dsw-alias-brand-primary); margin: 4px 0 0; flex: none; }
-[data-dme] button { cursor: pointer; }
-[data-dme] button:hover:not(:disabled), [data-dme] select:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-brand-primary); }
+[data-dme] input[type='checkbox'] { accent-color: var(--dsw-alias-brand-primary); margin: 3px 0 0; flex: none; }
+[data-dme] button { cursor: pointer; font-size: 12px; }
+[data-dme] button:hover:not(:disabled), [data-dme] select:hover:not(:disabled) { background: var(--dsw-alias-bg-layer-2); border-color: var(--dsw-alias-label-secondary); }
 [data-dme] button:active:not(:disabled) { background: var(--dsw-alias-bg-base); }
+[data-dme] button.dme-primary:not(:disabled) { color: var(--dsw-alias-bg-base); background: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-primary); font-weight: 600; }
+[data-dme] button.dme-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--dsw-alias-label-primary) 85%, var(--dsw-alias-bg-base)); }
 [data-dme] button:disabled, [data-dme] select:disabled, [data-dme] input:disabled { cursor: not-allowed; color: var(--dsw-alias-label-secondary); background: var(--dsw-alias-bg-base); border-color: var(--dsw-alias-border-l1); opacity: 1; }
 [data-dme] :focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
-[data-dme] .dme-scroll { overflow: auto; max-height: 360px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md, 6px); }
-[data-dme] .dme-model { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-[data-dme] .dme-model:last-child { border-bottom: 0; }
-[data-dme] .dme-model:hover { background: var(--dsw-alias-bg-layer-2); }
-[data-dme] .dme-model[data-selected='true'] { background: color-mix(in srgb, var(--dsw-alias-brand-primary) 10%, var(--dsw-alias-bg-layer-1)); box-shadow: inset 3px 0 var(--dsw-alias-brand-primary); }
-[data-dme] .dme-details { margin-top: 12px; padding: 12px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md, 6px); }
-[data-dme] .dme-values { overflow-wrap: anywhere; white-space: pre-wrap; }
-[data-dme] table { width: 100%; border-collapse: collapse; }
-[data-dme] thead { background: var(--dsw-alias-bg-layer-2); }
-[data-dme] th, [data-dme] td { padding: 6px; text-align: start; vertical-align: top; border-bottom: 1px solid var(--dsw-alias-border-l1); }
-[data-dme] .dme-notice { --dme-notice-tone: var(--dsw-alias-brand-primary); border-inline-start: 3px solid var(--dme-notice-tone); padding: 8px 10px; margin: 8px 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); background: color-mix(in srgb, var(--dme-notice-tone) 8%, var(--dsw-alias-bg-layer-1)); }
+[data-dme] .dme-actions { justify-content: space-between; }
+[data-dme] .dme-actions > .dme-muted { flex: 1 1 200px; }
+[data-dme] .dme-toolbar { justify-content: space-between; }
+[data-dme] .dme-summary { padding: 11px 13px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-base); }
+[data-dme] .dme-list { display: grid; gap: 8px; max-height: 420px; overflow: auto; padding: 3px; }
+[data-dme] .dme-model { width: 100%; min-height: 66px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 11px 12px; text-align: start; border-radius: 12px; }
+[data-dme] .dme-identity { flex: 1 1 160px; min-width: 0; }
+[data-dme] .dme-identity strong, [data-dme] .dme-identity code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-dme] .dme-identity code { font-size: 11px; color: var(--dsw-alias-label-secondary); margin-top: 2px; }
+[data-dme] .dme-row-action { color: var(--dsw-alias-label-secondary); display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+[data-dme] .dme-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 7px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 999px; font-size: 10px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-badge[data-tone='matched'] { color: var(--dsw-alias-state-success-primary); border-color: color-mix(in srgb, currentColor 30%, var(--dsw-alias-border-l1)); }
+[data-dme] .dme-badge[data-tone='ambiguous'] { color: var(--dsw-alias-state-warn-primary); border-color: color-mix(in srgb, currentColor 30%, var(--dsw-alias-border-l1)); }
+[data-dme] .dme-empty { padding: 28px 16px; text-align: center; border: 1px dashed var(--dsw-alias-border-l2); border-radius: 12px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-values { overflow-wrap: anywhere; white-space: pre-wrap; min-width: 0; }
+[data-dme] .dme-preview { border: 1px solid var(--dsw-alias-border-l2); border-radius: 14px; background: var(--dsw-alias-bg-layer-1); overflow: hidden; }
+[data-dme] .dme-preview-header { padding: 13px 15px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+[data-dme] .dme-diff { padding: 15px; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+[data-dme] .dme-diff:last-child { border-bottom: 0; }
+[data-dme] .dme-diff-field { margin-bottom: 10px; font-size: 12px; overflow-wrap: anywhere; }
+[data-dme] .dme-diff-column { min-width: 0; border: 1px solid var(--dsw-alias-border-l1); border-radius: 8px; background: var(--dsw-alias-bg-base); }
+[data-dme] .dme-diff-column[data-after='true'] { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 25%, var(--dsw-alias-border-l1)); }
+[data-dme] .dme-diff-label { padding: 8px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); font-size: 11px; color: var(--dsw-alias-label-secondary); }
+[data-dme] .dme-diff-value { padding: 10px; font-size: 12px; }
+[data-dme] .dme-off-removed { margin-top: 8px; color: var(--dsw-alias-state-warn-primary); font-size: 11px; }
+[data-dme] .dme-confirm { padding: 12px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 12px; background: var(--dsw-alias-bg-base); }
+[data-dme] .dme-notice { --dme-notice-tone: var(--dsw-alias-brand-primary); border: 1px solid color-mix(in srgb, var(--dme-notice-tone) 25%, var(--dsw-alias-border-l1)); border-radius: 8px; padding: 11px 12px; overflow-wrap: anywhere; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); background: color-mix(in srgb, var(--dme-notice-tone) 8%, var(--dsw-alias-bg-layer-1)); }
+[data-dme] .dme-notice ul { margin: 8px 0 0; padding-inline-start: 20px; }
 [data-dme] .dme-notice-error { --dme-notice-tone: var(--dsw-alias-state-error-primary); }
 [data-dme] .dme-notice-warning { --dme-notice-tone: var(--dsw-alias-state-warn-primary); }
 [data-dme] .dme-notice-success { --dme-notice-tone: var(--dsw-alias-state-success-primary); }
@@ -193,6 +248,16 @@ window.__ModuleLoader__.load({
         if (this.disposed || this.applying) return
         ++this.scanSeq
         this.publish({ ...this.invalidatePreview(), sourceProvider, scan: null, modelId: '', sourceKey: '', loading: '' })
+      }
+      editSelection() {
+        if (this.disposed || this.applying) return
+        ++this.scanSeq
+        this.publish({ ...this.invalidatePreview(), scan: null, modelId: '', sourceKey: '', loading: '' })
+      }
+      backToModels() {
+        if (this.disposed || this.applying) return
+        if (this.state.result) { void this.scan(); return }
+        this.publish({ ...this.invalidatePreview(), modelId: '', sourceKey: '', loading: '' })
       }
       setFilter(filter) { if (!this.disposed) this.publish({ filter, limit: PAGE }) }
       showMore() { if (!this.disposed) this.publish({ limit: Math.min(this.state.limit + PAGE, MAX_VISIBLE) }) }
@@ -278,6 +343,13 @@ window.__ModuleLoader__.load({
       }
     }
 
+    const icon = (name) => h('svg', { className: 'dme-icon', viewBox: '0 0 24 24', 'aria-hidden': true, focusable: 'false' },
+      h('path', { d: {
+        spark: 'm12 3 2.6 6.4L21 12l-6.4 2.6L12 21l-2.6-6.4L3 12l6.4-2.6Z',
+        check: 'm5 12 4 4L19 6', arrow: 'm9 5 7 7-7 7', back: 'm15 5-7 7 7 7',
+        shield: 'm12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Zm-4 9 3 3 5-6',
+      }[name] }))
+
     function Panel({ t, useEnhance, actions }) {
       const state = useEnhance((snapshot) => snapshot)
       const busy = Boolean(state.loading)
@@ -287,70 +359,113 @@ window.__ModuleLoader__.load({
       const preview = state.preview
       const catalog = status?.catalog
       const generated = catalog?.generatedAt ? new Date(catalog.generatedAt) : null
+      const view = !state.scan ? 'setup' : !model ? 'results' : state.result ? 'saved' : 'detail'
+      const step = view === 'setup' ? 0 : view === 'results' ? 1 : 2
+      const heading = React.useRef(null)
+      const previousView = React.useRef(view)
+      // Move focus only when navigation removes the invoking control.
+      React.useEffect(() => {
+        if (previousView.current !== view) heading.current?.focus()
+        previousView.current = view
+      }, [view])
+      const previewButton = React.useRef(null)
+      const wasApplying = React.useRef(false)
+      React.useEffect(() => {
+        if (wasApplying.current && state.loading !== 'apply' && state.error) previewButton.current?.focus()
+        wasApplying.current = state.loading === 'apply'
+      }, [state.loading, state.error])
       const query = state.filter.trim().toLowerCase()
       const matching = (state.scan?.models ?? []).filter((entry) => `${entry.id} ${entry.name}`.toLowerCase().includes(query))
       const visible = matching.slice(0, state.limit)
       const candidates = model?.match?.candidates ?? []
       const selectedCandidate = candidates.find((candidate) => candidate.key === state.sourceKey)
+      const matchStatus = (entry) => ['matched', 'ambiguous', 'unmatched'].includes(entry.match?.status) ? entry.match.status : 'unmatched'
+      const badge = (entry) => h('span', { className: 'dme-badge', 'data-tone': matchStatus(entry) }, matchStatus(entry) === 'matched' ? icon('check') : null, t(matchStatus(entry)))
       const inputValue = (value) => h('div', null,
         h('div', null, t(imageInputState(value) === 'imageUnknown' ? 'inputUnspecified' : imageInputState(value))),
-        h('div', null, t('rawJson'), ': ', h('code', null, text(value))))
-      const button = (key, fn, disabled = busy) => h('button', { type: 'button', disabled, onClick: () => { void fn() } }, t(key))
-      const notices = (key, values) => values?.length ? h('div', { className: `dme-notice dme-notice-${key === 'blockers' ? 'error' : 'warning'}` }, h('strong', null, t(key)), h('ul', null, values.slice(0, 100).map((value, index) => h('li', { key: index }, text(value))))) : null
-      const check = (key) => h('label', { className: 'dme-check' }, h('input', { type: 'checkbox', checked: state[key], disabled: busy, onChange: (event) => actions.setOption(key, event.target.checked) }), t(key))
+        h('div', { className: 'dme-muted' }, t('rawJson'), ': ', h('code', null, text(value))))
+      const button = (key, fn, disabled = busy, primary = false) => h('button', { type: 'button', ref: key === 'preview' ? previewButton : undefined, className: primary ? 'dme-primary' : undefined, disabled, onClick: () => { void fn() } }, t(key))
+      const notices = (key, values) => values?.length ? h('div', { className: `dme-notice dme-notice-${key === 'blockers' ? 'error' : 'warning'}`, role: key === 'blockers' ? 'alert' : undefined }, h('strong', null, t(key)), h('ul', null, values.slice(0, 100).map((value, index) => h('li', { key: index }, text(value))))) : null
+      const scopeSummary = h('div', { className: 'dme-summary dme-values' }, h('strong', null, text(route?.displayName ?? state.provider)), ' · ', h('code', null, text(state.provider)),
+        h('p', { className: 'dme-muted' }, t('source'), ': ', state.sourceProvider || t('autoSource')))
+      const diff = (change) => {
+        const isInput = change.field === `${state.modelId}.input`
+        const offRemoved = change.field === `${state.modelId}.reasoningEfforts` && change.before && typeof change.before === 'object'
+          && Object.hasOwn(change.before, 'off') && (change.after === false
+            || (change.after && typeof change.after === 'object' && !Object.hasOwn(change.after, 'off')))
+        return h('section', { key: change.field, className: 'dme-diff', 'aria-label': isInput ? t('inputField') : text(change.field) },
+          h('h4', { className: 'dme-diff-field' }, isInput ? t('inputField') : text(change.field)),
+          h('div', { className: 'dme-diff-grid' }, ['before', 'after'].map((side) => h('div', { key: side, className: 'dme-diff-column', 'data-after': side === 'after' },
+            h('div', { className: 'dme-diff-label' }, t(side)),
+            h('div', { className: 'dme-diff-value dme-values' }, isInput ? inputValue(change[side]) : h('code', null, text(change[side])))))),
+          offRemoved ? h('p', { className: 'dme-off-removed' }, t('offRemoved')) : null)
+      }
       return h('section', { 'data-dme': '', 'aria-label': t('title'), 'aria-busy': busy },
-        h('style', null, CSS), h('h3', null, t('title')), h('p', { className: 'dme-muted' }, t('description')),
-        h('p', { className: 'dme-muted' }, t('provenance')),
-        h('p', { className: 'dme-notice dme-notice-warning' }, t('effortNotice')),
-        h('div', { className: 'dme-controls' }, button('reload', () => actions.load())),
-        busy ? h('p', { role: 'status', 'aria-live': 'polite' }, t('loading')) : null,
-        state.error ? h('p', { role: 'alert', className: 'dme-notice dme-notice-error' }, t('error'), ': ',
-          state.error.code === 'model-enhance/client-response' ? t('malformed') : state.error.code === 'model-enhance/client-unavailable' ? t('unavailable') : state.error.message) : null,
-        catalog ? h('div', null,
-          h('p', null, t('catalogTime'), ': ', generated && Number.isFinite(generated.getTime()) ? generated.toLocaleString() : text(catalog.generatedAt)),
-          h('p', null, t('catalogCounts'), ': ', text(catalog.models), ' / ', text(catalog.providers)),
+        h('style', null, CSS),
+        h('header', { className: 'dme-header' }, h('span', { className: 'dme-symbol' }, icon('spark')),
+          h('div', { className: 'dme-heading' }, h('div', { className: 'dme-title-line' }, h('h3', null, t('title')), h('span', { className: 'dme-badge' }, t('bundled'))),
+            h('p', { className: 'dme-muted' }, t('description'))), button('reload', () => actions.load())),
+        catalog ? h('div', { className: 'dme-stack' },
+          h('div', { className: 'dme-meta' }, h('span', null, t('catalogTime'), ': ', h('strong', null, generated && Number.isFinite(generated.getTime()) ? generated.toLocaleString() : text(catalog.generatedAt))),
+            h('span', null, t('catalogCounts'), ': ', h('strong', null, text(catalog.models), ' / ', text(catalog.providers)))),
           !catalog.available ? h('p', { className: 'dme-notice dme-notice-warning' }, t('catalogMissing')) : null,
           catalog.lastError ? h('p', { className: 'dme-notice dme-notice-warning' }, t('catalogError'), ': ', text(catalog.lastError)) : null) : null,
-        status && status.routes.length === 0 ? h('p', null, t('noRoutes')) : null,
-        h('div', { className: 'dme-controls' },
-          h('label', null, t('provider'), h('select', { value: state.provider, disabled: busy, onChange: (event) => actions.setProvider(event.target.value) },
-            h('option', { value: '' }, t('chooseProvider')), (status?.routes ?? []).map((entry) => h('option', { key: entry.provider, value: entry.provider }, `${entry.displayName} (${entry.provider})`)))),
-          h('label', null, t('source'), h('select', { value: state.sourceProvider, disabled: busy, onChange: (event) => actions.setSource(event.target.value) },
-            h('option', { value: '' }, t('autoSource')), (status?.sourceProviders ?? []).map((entry) => h('option', { key: entry.id, value: entry.id }, `${entry.name} (${entry.id})`)))),
-          button('scan', () => actions.scan(), busy || !state.provider || !catalog?.available)),
+        h('details', null, h('summary', null, t('rules')), h('div', { className: 'dme-rules-body' }, h('p', null, t('provenance')), h('p', null, t('effortNotice')))),
+        h('ol', { className: 'dme-steps' }, ['stepProvider', 'stepMatch', 'stepApply'].map((key, index) => h('li', { key, className: 'dme-step', 'aria-current': step === index ? 'step' : undefined, 'data-complete': index < step },
+          h('span', { className: 'dme-step-number', 'aria-hidden': true }, index < step ? icon('check') : index + 1), h('span', null, t(key))))),
+        busy ? h('p', { role: 'status', 'aria-live': 'polite', className: 'dme-muted' }, t('loading')) : null,
+        state.error ? h('p', { role: 'alert', className: 'dme-notice dme-notice-error' }, t('error'), ': ',
+          state.error.code === 'model-enhance/client-response' ? t('malformed') : state.error.code === 'model-enhance/client-unavailable' ? t('unavailable') : state.error.message) : null,
         route && !route.writable ? h('p', { className: 'dme-notice dme-notice-warning' }, t('readOnly'), ': ', text(route.reason)) : null,
-        notices('warnings', state.scan?.warnings),
-        state.scan ? h('div', null,
+        view === 'setup' ? h('div', { className: 'dme-card dme-stack' },
+          h('h4', { ref: heading, tabIndex: -1 }, t('setupTitle')),
+          status && status.routes.length === 0 ? h('p', { className: 'dme-empty' }, t('noRoutes')) : null,
+          h('div', { className: 'dme-controls' },
+            h('label', null, t('provider'), h('select', { value: state.provider, disabled: busy, onChange: (event) => actions.setProvider(event.target.value) },
+              h('option', { value: '' }, t('chooseProvider')), (status?.routes ?? []).map((entry) => h('option', { key: entry.provider, value: entry.provider }, `${entry.displayName} (${entry.provider})`)))),
+            h('label', null, t('source'), h('select', { value: state.sourceProvider, disabled: busy, onChange: (event) => actions.setSource(event.target.value) },
+              h('option', { value: '' }, t('autoSource')), (status?.sourceProviders ?? []).map((entry) => h('option', { key: entry.id, value: entry.id }, `${entry.name} (${entry.id})`))))),
+          h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('localOnly')), button('scan', () => actions.scan(), busy || !state.provider || !catalog?.available, true))) : null,
+        view === 'results' ? h('div', { className: 'dme-stack' },
+          h('div', { className: 'dme-toolbar' }, h('h4', { ref: heading, tabIndex: -1 }, t('resultsTitle')), button('changeProvider', () => actions.editSelection())),
+          scopeSummary, notices('warnings', state.scan.warnings), h('p', { className: 'dme-muted' }, t('resultsHint')),
           h('label', null, t('filter'), h('input', { type: 'search', value: state.filter, onChange: (event) => actions.setFilter(event.target.value) })),
-          h('p', { role: 'status' }, t('count'), ': ', visible.length, ' / ', matching.length),
-          matching.length === 0 ? h('p', null, t('noModels')) : null,
-          h('div', { className: 'dme-scroll' }, visible.map((entry) => h('div', { key: entry.id, className: 'dme-model', 'data-selected': entry.id === state.modelId },
-            h('span', { className: 'dme-values' }, text(entry.name), ' — ', text(entry.id), ' · ', t(['matched', 'ambiguous', 'unmatched'].includes(entry.match?.status) ? entry.match.status : 'unmatched')),
-            h('button', { type: 'button', disabled: busy, 'aria-label': `${t('selectModel')}: ${entry.name} (${entry.id})`, onClick: () => actions.selectModel(entry.id) }, t('selectModel'))))),
-          matching.length > visible.length ? h('div', null, h('p', null, t('limited')), state.limit < MAX_VISIBLE ? button('more', () => actions.showMore(), false) : null) : null) : null,
-        model ? h('div', { className: 'dme-details' }, h('h4', null, text(model.name), ' — ', text(model.id)),
-          h('label', null, t('candidate'), h('select', { value: state.sourceKey, disabled: busy, onChange: (event) => actions.selectCandidate(event.target.value) },
-            h('option', { value: '' }, t('chooseCandidate')), candidates.slice(0, MAX_VISIBLE).map((candidate) => h('option', { key: candidate.key, value: candidate.key }, `${candidate.name} — ${candidate.provider}/${candidate.id} (${candidate.confidence})`)))),
-          candidates.length > MAX_VISIBLE ? h('p', null, t('limited')) : null,
-          selectedCandidate ? h('div', { className: 'dme-notice', role: 'status', 'aria-live': 'polite' },
-            h('p', null, h('strong', null, t('vendorImageInput')), ': ', t(imageInputState(selectedCandidate.input))),
-            h('p', null, t('imageInputNotice'))) : null,
-          check('overwrite'),
-          button('preview', () => actions.preview(), busy || !state.sourceKey),
-          !preview ? h('p', null, t('noPreview')) : h('div', null,
-            h('h4', null, t('previewTitle')),
-            preview.changes.length ? h('div', { className: 'dme-scroll' }, h('table', null,
-              h('thead', null, h('tr', null, h('th', { scope: 'col' }, t('field')), h('th', { scope: 'col' }, t('before')), h('th', { scope: 'col' }, t('after')))),
-              h('tbody', null, preview.changes.slice(0, MAX_VISIBLE).map((change, index) => h('tr', { key: index },
-                h('th', { scope: 'row' }, change.field === `${state.modelId}.input` ? t('inputField') : text(change.field)),
-                h('td', { className: 'dme-values' }, change.field === `${state.modelId}.input` ? inputValue(change.before) : text(change.before)),
-                h('td', { className: 'dme-values' }, change.field === `${state.modelId}.input` ? inputValue(change.after) : text(change.after))))))) : h('p', null, t('nothing')),
-            notices('warnings', preview.warnings), notices('blockers', preview.blockers),
-            preview.requiresConfirmation ? h('label', { className: 'dme-check' }, h('input', { type: 'checkbox', checked: state.confirmed, disabled: busy, onChange: (event) => actions.confirm(event.target.checked) }), t('confirm')) : null,
-            button('apply', () => actions.apply(), busy || !route?.writable || !preview.canApply || preview.blockers.length > 0 || (preview.requiresConfirmation && !state.confirmed)))) : null,
-        state.result ? h('div', { role: 'status', className: `dme-notice dme-notice-${state.result.saved && state.result.verified ? 'success' : 'warning'}`, 'aria-live': 'polite' }, h('h4', null, t('result')),
-          h('p', null, t(state.result.saved ? state.result.verified ? 'savedVerified' : 'savedUnverified' : 'notSaved')),
-          notices('warnings', state.result.warnings)) : null)
+          h('p', { role: 'status', className: 'dme-muted' }, t('count'), ': ', visible.length, ' / ', matching.length),
+          matching.length === 0 ? h('p', { className: 'dme-empty' }, t(state.scan.models.length === 0 ? 'noAddedModels' : 'noModels')) : null,
+          h('div', { className: 'dme-list' }, visible.map((entry) => h('button', { key: entry.id, type: 'button', className: 'dme-model', disabled: busy, 'aria-label': `${t('selectModel')}: ${entry.name} (${entry.id}) · ${t(matchStatus(entry))}`, onClick: () => actions.selectModel(entry.id) },
+            h('span', { className: 'dme-identity' }, h('strong', null, text(entry.name)), h('code', null, text(entry.id))), badge(entry), h('span', { className: 'dme-row-action' }, t('selectModel'), icon('arrow'))))),
+          matching.length > visible.length ? h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('limited')), state.limit < MAX_VISIBLE ? button('more', () => actions.showMore(), false) : null) : null) : null,
+        model ? h('div', { className: 'dme-stack' },
+          h('div', { className: 'dme-toolbar' }, h('h4', { ref: heading, tabIndex: -1, className: 'dme-values' }, text(model.name), ' — ', text(model.id)),
+            button('backModels', () => actions.backToModels())), scopeSummary,
+          notices('warnings', state.scan.warnings),
+          view === 'detail' ? h('div', { className: 'dme-stack' },
+            h('div', { className: 'dme-card dme-stack' },
+              h('div', { className: 'dme-title-line' }, badge(model), h('p', { className: 'dme-muted' }, t('previewHint'))),
+              h('label', null, t('candidate'), h('select', { value: state.sourceKey, disabled: busy || !candidates.length, onChange: (event) => actions.selectCandidate(event.target.value) },
+                h('option', { value: '' }, t('chooseCandidate')), candidates.slice(0, MAX_VISIBLE).map((candidate) => h('option', { key: candidate.key, value: candidate.key }, `${candidate.name} — ${candidate.provider}/${candidate.id} (${candidate.confidence})`)))),
+              candidates.length > MAX_VISIBLE ? h('p', { className: 'dme-muted' }, t('limited')) : null,
+              candidates.length === 0 ? h('p', { className: 'dme-empty' }, t('noCandidates')) : null,
+              selectedCandidate ? h('div', { className: 'dme-notice', role: 'status', 'aria-live': 'polite' },
+                h('p', { className: 'dme-values' }, h('strong', null, text(selectedCandidate.name)), ' · ', text(selectedCandidate.provider), '/', text(selectedCandidate.id)),
+                h('p', null, h('strong', null, t('vendorImageInput')), ': ', t(imageInputState(selectedCandidate.input))), h('p', { className: 'dme-muted' }, t('imageInputNotice'))) : null,
+              h('label', { className: 'dme-check' }, h('input', { type: 'checkbox', checked: state.overwrite, disabled: busy, onChange: (event) => actions.setOption('overwrite', event.target.checked) }),
+                h('span', null, t('overwrite'), h('small', { className: 'dme-muted' }, t('overwriteHint')))),
+              h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('localOnly')), button('preview', () => actions.preview(), busy || !state.sourceKey))),
+            !preview ? h('p', { className: 'dme-muted' }, t('noPreview')) : h('div', { className: 'dme-stack' },
+              h('div', { className: 'dme-preview' }, h('div', { className: 'dme-preview-header dme-toolbar' }, h('h4', null, t('previewTitle')), h('span', { className: 'dme-badge' }, preview.changes.length, ' ', t('changes'))),
+                preview.changes.length ? preview.changes.slice(0, MAX_VISIBLE).map(diff) : h('p', { className: 'dme-empty' }, t('nothing'))),
+              preview.changes.length > MAX_VISIBLE ? h('p', { className: 'dme-muted' }, t('limited')) : null,
+              notices('warnings', preview.warnings), notices('blockers', preview.blockers),
+              h('div', { className: 'dme-confirm dme-stack' },
+                preview.requiresConfirmation ? h('label', { className: 'dme-check' }, h('input', { type: 'checkbox', checked: state.confirmed, disabled: busy, onChange: (event) => actions.confirm(event.target.checked) }), t('confirm')) : null,
+                h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, icon('shield'), ' ', t('safeWrite')),
+                  button('apply', () => actions.apply(), busy || !route?.writable || !preview.canApply || preview.blockers.length > 0 || (preview.requiresConfirmation && !state.confirmed), true))))) : null,
+          state.result ? h('div', { className: 'dme-stack' },
+            h('div', { role: 'status', className: `dme-notice dme-notice-${state.result.saved && state.result.verified ? 'success' : 'warning'}`, 'aria-live': 'polite' },
+              h('h4', null, t(state.result.saved && state.result.verified ? 'savedTitle' : 'unverifiedTitle')),
+              h('p', null, t(state.result.saved ? state.result.verified ? 'savedVerified' : 'savedUnverified' : 'notSaved')), notices('warnings', state.result.warnings)),
+            h('div', { className: 'dme-actions' }, h('p', { className: 'dme-muted' }, t('safeWrite')), button('rescan', () => actions.scan(), busy, true))) : null) : null)
     }
 
     return {

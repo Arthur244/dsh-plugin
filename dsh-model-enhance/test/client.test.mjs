@@ -32,7 +32,22 @@ async function harness(overrides = {}) {
   let loaded, registrationRemoved = 0, localeRemoved = 0, injectRemoved = 0, remoteRemoved = 0
   const contributions = []
   const required = []
-  const React = { createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter((value) => value !== null && value !== undefined && value !== false) }) }
+  const hookValues = []
+  const focusEvents = []
+  let hookIndex = 0, pendingEffects = []
+  const React = {
+    createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat(Infinity).filter((value) => value !== null && value !== undefined && value !== false) }),
+    useRef: (initial) => {
+      const index = hookIndex++
+      return hookValues[index] ??= { current: initial }
+    },
+    useEffect: (effect, deps) => {
+      const index = hookIndex++
+      const previous = hookValues[index]
+      if (!previous || deps.some((value, i) => !Object.is(value, previous[i]))) pendingEffects.push(effect)
+      hookValues[index] = deps
+    },
+  }
   const scope = { window: { __ModuleLoader__: { load: (entry) => { loaded = entry } } } }
   vm.runInNewContext(source, scope, { filename: 'client.js' })
   assert.equal(loaded.id, 'dsh-model-enhance')
@@ -122,14 +137,21 @@ async function harness(overrides = {}) {
   const actions = injected.actions
   const render = (language = 'en') => {
     const dictionary = dictionaries.get('settings.dsh-model-enhance')[language]
-    return registration.Component({
+    hookIndex = 0
+    pendingEffects = []
+    const tree = registration.Component({
       ...injected,
       useEnhance: (selector) => selector(injected.hooks.enhance.getSnapshot()),
       t: (key) => { assert.ok(Object.hasOwn(dictionary, key), `Missing locale key: ${key}`); return dictionary[key] },
     })
+    for (const node of nodes(tree)) {
+      if (node.props.ref) node.props.ref.current = { focus: () => focusEvents.push(allText(node)) }
+    }
+    for (const effect of pendingEffects) effect()
+    return tree
   }
   return {
-    ...probe, actions, render, get state() { return injected.hooks.enhance.getSnapshot() },
+    ...probe, actions, render, focusEvents, get state() { return injected.hooks.enhance.getSnapshot() },
     subscribe: injected.hooks.enhance.subscribe,
   }
 }
@@ -353,19 +375,21 @@ test('input preview localizes the field and before/after meanings while retainin
       ['en', 'Image input capability (input)', [enBefore, enAfter], 'Raw JSON'],
       ['zh', '图片输入能力（input）', [zhBefore, zhAfter], '原始 JSON'],
     ]) {
-      const rows = nodes(h.render(language)).filter((node) => node.type === 'tr')
-      const inputRow = rows.find((node) => node.children.some((child) => child.type === 'th' && allText(child) === field))
+      const rows = nodes(h.render(language)).filter((node) => node.type === 'section' && node.props['aria-label'])
+      const inputRow = rows.find((node) => node.props['aria-label'] === field)
       assert.ok(inputRow)
-      const cells = inputRow.children.filter((node) => node.type === 'td')
+      const cells = nodes(inputRow).filter((node) => Object.hasOwn(node.props, 'data-after'))
       assert.equal(cells.length, 2)
+      assert.deepEqual(cells.map((node) => node.props['data-after']), [false, true])
       for (const [index, value] of [before, after].entries()) {
-        assert.equal(allText(cells[index].children[0].children[0]), meanings[index])
+        const valueNode = cells[index].children[1]
+        assert.equal(allText(valueNode.children[0].children[0]), meanings[index])
         assert.ok(allText(cells[index]).includes(raw))
         const json = nodes(cells[index]).find((node) => node.type === 'code')
         assert.equal(allText(json), value === undefined ? '—' : JSON.stringify(value))
       }
-      const otherRow = rows.find((node) => node.children.some((child) => child.type === 'th' && allText(child) === 'wire-id.contextWindow'))
-      assert.deepEqual(otherRow.children.filter((node) => node.type === 'td').map(allText), ['1000', '2000'])
+      const otherRow = rows.find((node) => node.props['aria-label'] === 'wire-id.contextWindow')
+      assert.deepEqual(nodes(otherRow).filter((node) => Object.hasOwn(node.props, 'data-after')).map((node) => allText(node.children[1])), ['1000', '2000'])
     }
     await h.dispose()
   }
@@ -397,7 +421,10 @@ test('theme CSS scopes native controls, popups and interaction states to live DS
   assert.match(rule('[data-dme] button:hover:not(:disabled)'), /var\(--dsw-alias-bg-layer-2\)/)
   assert.match(rule('[data-dme] select:disabled'), /var\(--dsw-alias-label-secondary\)/)
   assert.match(rule('[data-dme] select:disabled'), /opacity:\s*1/)
-  assert.match(rule('[data-dme] thead'), /var\(--dsw-alias-bg-layer-2\)/)
+  assert.match(rule('[data-dme] .dme-diff-column'), /var\(--dsw-alias-bg-base\)/)
+  assert.match(rule('[data-dme] .dme-diff-grid'), /auto-fit.*minmax\(min\(100%, 230px\)/)
+  assert.match(rule('[data-dme] .dme-values'), /overflow-wrap:\s*anywhere/)
+  assert.doesNotMatch(rule('[data-dme] .dme-header'), /display:\s*none/)
   for (const [kind, token] of [['error', 'error'], ['warning', 'warn'], ['success', 'success']]) {
     assert.ok(rule(`[data-dme] .dme-notice-${kind}`).includes(`var(--dsw-alias-state-${token}-primary)`))
   }
@@ -406,18 +433,19 @@ test('theme CSS scopes native controls, popups and interaction states to live DS
   await h.dispose()
 })
 
-test('rendered selection, alerts and preview notices expose semantic theme states', async () => {
+test('detail alerts and saved result expose distinct semantic theme states', async () => {
   const h = await harness({ preview: async () => ({ ok: true, value: preview({ warnings: ['Check upstream'], blockers: ['Unsafe default'], canApply: false }) }) })
   await choose(h)
-  h.actions.publish({ error: { code: 'fixture', message: 'Failed operation' },
-    result: { saved: true, verified: true, warnings: [] } })
+  h.actions.publish({ error: { code: 'fixture', message: 'Failed operation' } })
   const tree = nodes(h.render())
   assert.ok(tree.some((node) => node.props.className === 'dme-muted'))
-  assert.ok(tree.some((node) => node.props.className === 'dme-model' && node.props['data-selected'] === true))
+  assert.ok(tree.some((node) => node.props['data-tone'] === 'matched'))
   assert.ok(tree.some((node) => node.props.role === 'alert' && node.props.className.includes('dme-notice-error')))
-  for (const kind of ['warning', 'error', 'success']) {
+  for (const kind of ['warning', 'error']) {
     assert.ok(tree.some((node) => node.props.className?.split(' ').includes(`dme-notice-${kind}`)), kind)
   }
+  h.actions.publish({ result: { saved: true, verified: true, warnings: [] } })
+  assert.ok(nodes(h.render()).some((node) => node.props.role === 'status' && node.props.className?.includes('dme-notice-success')))
   assert.doesNotMatch(allText(h.render()), /Default reasoning status/)
   await h.dispose()
 })
@@ -611,6 +639,204 @@ test('ten thousand discovered models never create an unbounded rendered list', a
   assert.equal(modelRows().length, 1)
   assert.equal(h.state.limit, 50)
   h.dispose()
+})
+
+test('guided navigation shows one phase, keeps filters on return and exposes match status to assistive readers', async () => {
+  const h = await harness()
+  await flush()
+  const click = (label) => {
+    const control = nodes(h.render()).find((node) => node.type === 'button' && allText(node) === label)
+    assert.ok(control, label)
+    assert.equal(control.props.disabled, false, label)
+    control.props.onClick()
+  }
+  const currentStep = () => nodes(h.render()).filter((node) => node.props['aria-current'] === 'step').map(allText)
+  assert.deepEqual(currentStep(), ['1 Choose provider'])
+  assert.ok(nodes(h.render()).some((node) => node.type === 'details'))
+  assert.equal(nodes(h.render()).filter((node) => node.type === 'select').length, 2)
+  h.actions.setProvider('target')
+  click('Load and match added models')
+  await flush()
+  assert.deepEqual(currentStep(), ['2 Match models'])
+  h.actions.setFilter('wire')
+  const row = nodes(h.render()).find((node) => node.type === 'button' && node.props['aria-label']?.includes('View recommendation'))
+  assert.match(row.props['aria-label'], /Matched/)
+  assert.equal(nodes(row).filter((node) => node.type === 'button').length, 1, 'rows contain no nested buttons')
+  row.props.onClick()
+  await flush()
+  assert.deepEqual(currentStep(), ['3 Preview and apply'])
+  assert.equal(nodes(h.render()).some((node) => node.props.className === 'dme-model'), false)
+  assert.equal(nodes(h.render()).filter((node) => node.type === 'select').length, 1)
+  const requests = h.requests.length
+  click('Back to models')
+  assert.equal(h.requests.length, requests, 'back navigation does not make a network or Host request')
+  assert.equal(h.state.preview, null)
+  assert.equal(h.state.confirmed, false)
+  assert.equal(h.state.filter, 'wire')
+  assert.deepEqual(currentStep(), ['2 Match models'])
+  assert.deepEqual(h.focusEvents.slice(-3).map((value) => value.replace(/\s+/g, ' ')), ['Added models', 'Model — wire-id', 'Added models'])
+  click('Change provider')
+  assert.equal(h.state.scan, null)
+  assert.equal(h.state.provider, 'target')
+  assert.deepEqual(currentStep(), ['1 Choose provider'])
+  assert.equal(h.focusEvents.at(-1), 'Choose matching scope')
+  await h.dispose()
+})
+
+test('leaving a detail or matching scope discards late previews and scans', async () => {
+  const latePreview = deferred()
+  const h = await harness({ preview: () => latePreview.promise })
+  await choose(h)
+  h.actions.setFilter('wire')
+  h.actions.backToModels()
+  latePreview.resolve({ ok: true, value: preview({ requiresConfirmation: true }) })
+  await flush()
+  assert.equal(h.state.modelId, '')
+  assert.equal(h.state.preview, null)
+  assert.equal(h.state.loading, '')
+  assert.equal(h.state.filter, 'wire')
+  await h.dispose()
+  const lateScan = deferred()
+  const other = await harness({ scan: () => lateScan.promise })
+  await flush()
+  other.actions.setProvider('target')
+  const scanning = other.actions.scan()
+  other.actions.editSelection()
+  lateScan.resolve({ ok: true, value: scan() })
+  await scanning
+  assert.equal(other.state.scan, null)
+  assert.equal(other.state.loading, '')
+  await other.dispose()
+})
+
+test('no routes, no added models, filtered empty results and no candidates have separate actionable states', async () => {
+  const noRoutes = await harness({ status: async () => ({ ok: true, value: { ...status(), routes: [] } }) })
+  await flush()
+  assert.match(allText(noRoutes.render()), /No routes are available/)
+  await noRoutes.dispose()
+  const empty = await harness({ scan: async () => ({ ok: true, value: scan([]) }) })
+  await flush()
+  empty.actions.setProvider('target')
+  await empty.actions.scan()
+  assert.match(allText(empty.render()), /no added models.*native settings first/)
+  assert.doesNotMatch(allText(empty.render()), /No models match this filter/)
+  await empty.dispose()
+  const unmatched = await harness({ scan: async () => ({ ok: true, value: scan([{ id: 'wire-id', name: 'Model', match: { status: 'unmatched', candidates: [] } }]) }) })
+  await flush()
+  unmatched.actions.setProvider('target')
+  await unmatched.actions.scan()
+  unmatched.actions.setFilter('missing')
+  assert.match(allText(unmatched.render()), /No models match this filter/)
+  unmatched.actions.setFilter('')
+  unmatched.actions.selectModel('wire-id')
+  const tree = unmatched.render()
+  assert.match(allText(tree), /No vendor candidates found/)
+  assert.equal(nodes(tree).find((node) => node.type === 'select').props.disabled, true)
+  assert.equal(nodes(tree).find((node) => node.type === 'button' && allText(node) === 'Regenerate preview').props.disabled, true)
+  assert.equal(unmatched.requests.filter(([method]) => method === 'preview').length, 0)
+  await unmatched.dispose()
+})
+
+test('zero changes never claims configuration alignment and keeps warnings and blockers visible', async () => {
+  const h = await harness({ preview: async () => ({ ok: true, value: preview({ changes: [], canApply: false, warnings: ['Existing value retained'], blockers: ['Unavailable metadata'] }) }) })
+  await choose(h)
+  assert.match(allText(h.render()), /No field changes/)
+  assert.match(allText(h.render('zh')), /没有字段变更/)
+  assert.match(allText(h.render()), /Existing value retained.*Unavailable metadata/)
+  assert.doesNotMatch(allText(h.render()), /already matches|aligned|配置已与推荐一致/)
+  assert.equal(nodes(h.render()).find((node) => node.type === 'button' && allText(node) === 'Apply recommended configuration').props.disabled, true)
+  await h.dispose()
+})
+
+test('off removal is highlighted for null or string entries and for mappings replaced by false', async () => {
+  for (const off of [null, 'disabled']) {
+    for (const after of [{ high: 'high' }, false, { off, high: 'high' }]) {
+      const h = await harness({ preview: async () => ({ ok: true, value: preview({ requiresConfirmation: true, changes: [
+        { field: 'wire-id.reasoningEfforts', before: { off, high: 'high' }, after },
+      ] }) }) })
+      await choose(h)
+      const removed = after === false || !Object.hasOwn(after, 'off')
+      assert.equal(nodes(h.render()).some((node) => node.props.className === 'dme-off-removed'), removed)
+      if (removed) assert.match(allText(h.render('zh')), /本次预览移除 off 档位/)
+      assert.equal(nodes(h.render()).find((node) => node.type === 'button' && allText(node) === 'Apply recommended configuration').props.disabled, true)
+      h.actions.confirm(true)
+      h.actions.selectCandidate('')
+      assert.equal(h.state.confirmed, false)
+      assert.equal(h.state.preview, null)
+      await h.dispose()
+    }
+  }
+})
+
+test('save result has three distinct states and returning reads a fresh model snapshot', async () => {
+  for (const [saved, verified, message, tone] of [
+    [true, true, /fields were saved and checked.*not verified/, 'success'],
+    [true, false, /saved, but verification failed/, 'warning'],
+    [false, false, /was not saved/, 'warning'],
+  ]) {
+    const h = await harness({ apply: async () => ({ ok: true, value: { saved, verified, warnings: ['Result details'] } }) })
+    await choose(h)
+    h.render()
+    await h.actions.apply()
+    const tree = h.render()
+    assert.match(allText(tree), message)
+    assert.match(allText(tree), /Result details/)
+    assert.ok(nodes(tree).some((node) => node.props.role === 'status' && node.props.className?.includes(`dme-notice-${tone}`)))
+    assert.equal(nodes(tree).some((node) => node.type === 'button' && allText(node) === 'Apply recommended configuration'), false)
+    assert.equal(nodes(tree).some((node) => node.type === 'select'), false)
+    assert.ok(nodes(tree).some((node) => node.type === 'button' && allText(node) === 'Read latest models'))
+    h.actions.backToModels()
+    await flush()
+    assert.equal(h.requests.filter(([method]) => method === 'scan').length, 2)
+    assert.equal(h.state.result, null)
+    assert.equal(h.state.preview, null)
+    assert.equal(h.state.modelId, '')
+    await h.dispose()
+  }
+})
+
+test('failed writes restore focus to preview without replaying tokens or stealing candidate-change focus', async () => {
+  const writing = deferred()
+  const h = await harness({ apply: () => writing.promise })
+  await choose(h)
+  h.render()
+  const pending = h.actions.apply()
+  const during = h.render()
+  assert.equal(nodes(during).filter((node) => node.type === 'button' && !node.props.disabled).length, 0)
+  writing.resolve({ ok: false, error: { code: 'expired', message: 'Preview expired' } })
+  await pending
+  h.render()
+  assert.equal(h.focusEvents.at(-1), 'Regenerate preview')
+  const focusCount = h.focusEvents.length
+  await h.actions.preview()
+  h.render()
+  h.actions.setOption('overwrite', true)
+  await flush()
+  h.render()
+  assert.equal(h.focusEvents.length, focusCount, 'normal previews leave the invoking control focused')
+  assert.equal(h.requests.filter(([method]) => method === 'apply').length, 1)
+  await h.dispose()
+})
+
+test('long detail names and raw values remain complete instead of depending on tooltips', async () => {
+  const name = 'Long model '.repeat(100)
+  const id = 'vendor/'.repeat(100) + 'id'
+  const mapping = { high: 'wire-value/'.repeat(100) }
+  const h = await harness({
+    scan: async () => ({ ok: true, value: scan([{ id, name, match: { status: 'matched', candidates: [{ ...candidate(), id, name }] } }]) }),
+    preview: async () => ({ ok: true, value: preview({ changes: [{ field: `${id}.reasoningEfforts`, before: null, after: mapping }] }) }),
+  })
+  await flush()
+  h.actions.setProvider('target')
+  await h.actions.scan()
+  h.actions.selectModel(id)
+  await flush()
+  const content = allText(h.render())
+  assert.ok(content.includes(name))
+  assert.ok(content.includes(id))
+  assert.ok(content.includes(JSON.stringify(mapping)))
+  assert.equal(nodes(h.render()).some((node) => node.props.title), false)
+  await h.dispose()
 })
 
 test('Client has no direct fetch, settings writes, DOM injection or privileged operation payloads', () => {
